@@ -1,0 +1,15 @@
+; Every label symbol from the grammar: ! # $ % & _
+; (@ is reserved for section markers and cannot be used in labels)
+{
+  simple: "plain label",
+  with_underscore: "underscored",
+  bang!: "exclamation",
+  #tag: "hash prefix",
+  $price: "dollar prefix",
+  tax%: "percent suffix",
+  save&load: "ampersand",
+  ALL_CAPS: "uppercase",
+  miXeD123: "alphanumeric mix",
+  _private: "leading underscore",
+  x: "single char"
+}

@@ -1,0 +1,184 @@
+; =========================================================
+; Complex infrastructure configuration
+; Multi-region deployment with deep nesting
+; =========================================================
+
+; Global settings shared across all regions
+{
+  global: {
+    project: "mega_platform",
+    version: "4.2.0",
+    environment: "production",
+    monitoring: {
+      enabled: true,
+      providers: [
+        {
+          name: "prometheus",
+          endpoint: "http://prom.internal:9090",
+          scrape_interval: 15,
+          labels: {team: "platform", tier: "critical"}
+        },
+        {
+          name: "datadog",
+          endpoint: "https://api.datadoghq.com",
+          api_key: null,  ; injected at runtime
+          tags: ["env:prod", "service:mega"]
+        }
+      ]
+    },
+    secrets: {
+      backend: "vault",
+      address: "https://vault.internal:8200",
+      paths: {
+        database: "secret/data/db",
+        api_keys: "secret/data/keys",
+        certificates: "secret/data/certs"
+      }
+    }
+  }
+}
+
+; Per-region deployment specs
+[
+  {
+    region: "us-east-1",
+    primary: true,
+    services: [
+      {
+        name: "api_gateway",
+        replicas: 5,
+        resources: {cpu: "2.0", memory: "4096"},
+        env: {
+          RATE_LIMIT: 10000,
+          CACHE_TTL: 300,
+          UPSTREAM: "http://backend.us-east-1.internal:8080"
+        },
+        health: {
+          path: "/healthz",
+          interval: 10,
+          threshold: 3
+        }
+      },
+      {
+        name: "backend",
+        replicas: 10,
+        resources: {cpu: "4.0", memory: "8192"},
+        env: {
+          DB_POOL_MIN: 10,
+          DB_POOL_MAX: 50,
+          CACHE_NODES: "redis1:6379,redis2:6379,redis3:6379"
+        },
+        volumes: [
+          {name: "data", mount: "/app/data", size: "100Gi"},
+          {name: "tmp", mount: "/tmp", size: "10Gi"}
+        ]
+      }
+    ],
+    database: {
+      engine: "postgres",
+      version: "16.2",
+      instances: {
+        writer: {host: "pg-writer.us-east-1.internal", port: 5432},
+        readers: [
+          {host: "pg-reader-1.us-east-1.internal", port: 5432, weight: 50},
+          {host: "pg-reader-2.us-east-1.internal", port: 5432, weight: 30},
+          {host: "pg-reader-3.us-east-1.internal", port: 5432, weight: 20}
+        ]
+      },
+      backup: {
+        enabled: true,
+        schedule: "0 2 * * *",
+        retention_days: 30,
+        destination: "s3://backups-us-east-1/postgres/"
+      }
+    }
+  },
+  {
+    region: "eu-west-1",
+    primary: false,
+    services: [
+      {
+        name: "api_gateway",
+        replicas: 3,
+        resources: {cpu: "2.0", memory: "4096"},
+        env: {
+          RATE_LIMIT: 5000,
+          CACHE_TTL: 300,
+          UPSTREAM: "http://backend.eu-west-1.internal:8080"
+        },
+        health: {
+          path: "/healthz",
+          interval: 10,
+          threshold: 3
+        }
+      },
+      {
+        name: "backend",
+        replicas: 6,
+        resources: {cpu: "4.0", memory: "8192"},
+        env: {
+          DB_POOL_MIN: 5,
+          DB_POOL_MAX: 30,
+          CACHE_NODES: "redis1:6379,redis2:6379"
+        },
+        volumes: [
+          {name: "data", mount: "/app/data", size: "50Gi"},
+          {name: "tmp", mount: "/tmp", size: "10Gi"}
+        ]
+      }
+    ],
+    database: {
+      engine: "postgres",
+      version: "16.2",
+      instances: {
+        writer: {host: "pg-writer.eu-west-1.internal", port: 5432},
+        readers: [
+          {host: "pg-reader-1.eu-west-1.internal", port: 5432, weight: 60},
+          {host: "pg-reader-2.eu-west-1.internal", port: 5432, weight: 40}
+        ]
+      },
+      backup: {
+        enabled: true,
+        schedule: "0 3 * * *",
+        retention_days: 30,
+        destination: "s3://backups-eu-west-1/postgres/"
+      }
+    }
+  }
+]
+
+; Pipeline definitions
+{
+  pipelines: {
+    build: {
+      trigger: "push",
+      branches: ["main", "release/*"],
+      stages: [
+        {name: "lint", image: "golangci-lint:latest", timeout: 300},
+        {name: "test", image: "golang:1.22", timeout: 600, parallel: 4},
+        {name: "build", image: "golang:1.22", timeout: 900},
+        {name: "scan", image: "trivy:latest", timeout: 300}
+      ]
+    },
+    deploy: {
+      trigger: "tag",
+      branches: ["release/*"],
+      stages: [
+        {name: "staging", regions: ["us-east-1"], approval: false},
+        {name: "canary", regions: ["us-east-1"], approval: true, traffic: 5},
+        {name: "production", regions: ["us-east-1", "eu-west-1"], approval: true, traffic: 100}
+      ],
+      rollback: {
+        auto: true,
+        error_threshold: 5.0,
+        window: 300
+      }
+    }
+  },
+  notifications: {
+    channels: [
+      {type: "slack", target: "#deployments", events: ["start", "success", "failure"]},
+      {type: "pagerduty", target: "platform-oncall", events: ["failure"]}
+    ]
+  }
+}

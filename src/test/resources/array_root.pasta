@@ -1,0 +1,6 @@
+; A top-level array
+[
+  {name: "Alice", role: "admin"},
+  {name: "Bob", role: "user"},
+  {name: "Carol", role: "user"}
+]

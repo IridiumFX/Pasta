@@ -1,0 +1,31 @@
+; Deeply nested structures
+{
+  level1: {
+    level2: {
+      level3: {
+        level4: {
+          value: "deep"
+        }
+      }
+    }
+  },
+  matrix: [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+  ],
+  records: [
+    {
+      id: 1,
+      name: "Alice",
+      tags: ["admin", "active"],
+      meta: {created: "2025-01-15", score: 98.5}
+    },
+    {
+      id: 2,
+      name: "Bob",
+      tags: ["user"],
+      meta: {created: "2025-03-22", score: 76.0}
+    }
+  ]
+}
