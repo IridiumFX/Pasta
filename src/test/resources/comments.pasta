@@ -1,0 +1,25 @@
+; =============================================
+; Application configuration
+; Environment: staging
+; =============================================
+
+; Main section
+{
+  ; Application identity
+  app_name: "my_service",
+  version: "1.2.3",
+
+  ; Feature toggles
+  features: {
+    dark_mode: true,   ; currently in beta
+    new_api: false,    ; disabled until Q3
+    max_upload: 52428800
+  },
+
+  ; Empty sections are valid
+  plugins: {},
+  overrides: [],
+
+  ; Semicolons in strings are fine; they are just characters
+  message: "status: ok; all systems go"
+}

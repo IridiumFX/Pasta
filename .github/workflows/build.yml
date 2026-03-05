@@ -1,0 +1,106 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ./build/bin/pasta_test
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pasta-linux
+          path: |
+            build/libpasta.so
+            build/libpasta.so.0
+            build/libpasta.so.0.1.0
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ./build/bin/pasta_test
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pasta-macos-arm64
+          path: |
+            build/libpasta.dylib
+            build/libpasta.0.dylib
+            build/libpasta.0.1.0.dylib
+
+  freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & test on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y cmake
+          run: |
+            cmake -B build -DCMAKE_BUILD_TYPE=Release
+            cmake --build build
+            ./build/bin/pasta_test
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pasta-freebsd-amd64
+          path: |
+            build/libpasta.so
+            build/libpasta.so.0
+            build/libpasta.so.0.1.0
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: |
+          $env:PATH = "$PWD\build\bin\Release;" + $env:PATH
+          .\build\bin\Release\pasta_test.exe
+        shell: pwsh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pasta-windows
+          path: |
+            build/bin/Release/pasta.dll
+            build/lib/Release/pasta.lib

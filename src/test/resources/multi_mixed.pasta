@@ -1,0 +1,39 @@
+; Mixed container types at top level
+; Maps and arrays interleaved
+
+{
+  schema: "https://pasta-lang.org/config/v1",
+  generated: "2026-03-05"
+}
+
+[
+  {name: "web", replicas: 3, image: "app:latest"},
+  {name: "worker", replicas: 2, image: "worker:latest"},
+  {name: "cron", replicas: 1, image: "cron:latest"}
+]
+
+{
+  networking: {
+    ingress: {
+      host: "api.example.com",
+      tls: true,
+      annotations: {
+        proxy_body_size: "50m",
+        rate_limit: 1000
+      }
+    },
+    service: {
+      type: "ClusterIP",
+      ports: [
+        {name: "http", port: 80, target: 8080},
+        {name: "metrics", port: 9090, target: 9090}
+      ]
+    }
+  }
+}
+
+[
+  "us-east-1",
+  "eu-west-1",
+  "ap-southeast-1"
+]

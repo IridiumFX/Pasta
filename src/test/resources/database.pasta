@@ -1,0 +1,22 @@
+; Production database configuration
+{
+  primary: {
+    host: "db-primary.internal",
+    port: 5432,
+    name: "appdb",
+    pool: {min: 5, max: 20},
+    ssl: true
+  },
+  replica: {
+    host: "db-replica.internal",
+    port: 5432,
+    name: "appdb",
+    pool: {min: 2, max: 10},
+    ssl: true
+  },
+  timeouts: {
+    connect: 5.0,
+    query: 30.0,
+    idle: 600
+  }
+}

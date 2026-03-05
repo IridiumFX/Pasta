@@ -1,0 +1,32 @@
+{
+  name: "ci_pipeline",
+  script: """
+#!/bin/bash
+set -euo pipefail
+echo "Building project..."
+make clean && make all
+echo "Running tests..."
+make test
+""",
+  dockerfile: """FROM golang:1.22-alpine
+RUN apk add --no-cache git
+WORKDIR /app
+COPY . .
+RUN go build -o server ./cmd/server
+CMD ["/app/server"]""",
+  notes: """
+This is a multiline note.
+It has several lines.
+  Some are indented.
+    Some more so.
+And some are not.
+""",
+  inline: "this is a regular string",
+  empty_multi: """""",
+  mixed: [
+    "regular",
+    """line one
+line two
+line three"""
+  ]
+}

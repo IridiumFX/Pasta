@@ -1,0 +1,11 @@
+; Multiple arrays at top level
+
+["admin", "editor", "viewer"]
+
+[
+  {endpoint: "/login", rate: 10},
+  {endpoint: "/register", rate: 5},
+  {endpoint: "/reset", rate: 2}
+]
+
+[200, 201, 204, 301, 400, 401, 403, 404, 500]

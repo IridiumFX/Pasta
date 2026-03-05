@@ -1,0 +1,26 @@
+; Infrastructure config using named sections
+
+@global {
+  project: "mega_platform",
+  version: "4.2.0",
+  environment: "production"
+}
+
+@services [
+  {name: "api", replicas: 5, port: 8080},
+  {name: "worker", replicas: 3, port: 9090},
+  {name: "cron", replicas: 1, port: 0}
+]
+
+@database {
+  engine: "postgres",
+  host: "db.internal",
+  port: 5432,
+  pool: {min: 5, max: 50}
+}
+
+@monitoring {
+  enabled: true,
+  providers: ["prometheus", "datadog"],
+  scrape_interval: 15
+}

@@ -1,0 +1,11 @@
+; Quoted labels for JSON interop and special characters in keys
+{
+  "Content-Type": "application/json",
+  "X-Request-ID": "abc-123",
+  "server.host": "localhost",
+  "with spaces": "value",
+  regular: "bare label still works",
+  _underscore: "also bare",
+  "": "empty key",
+  "key:with:colons": "colons in key"
+}

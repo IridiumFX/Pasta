@@ -1,0 +1,15 @@
+; Strings with various characters
+{
+  plain: "hello world",
+  empty: "",
+  path_win: "C:\Users\Admin\Documents\file.txt",
+  path_unix: "/var/log/app.log",
+  url: "https://example.com:8080/api?q=test&limit=10",
+  math: "2 + 2 = 4; 3 * 3 = 9",
+  punctuation: "Hello! How's it going? Fine, thanks.",
+  braces: "use {key: value} for maps",
+  brackets: "arrays look like [1, 2, 3]",
+  backslashes: "C:\path\to\file",
+  colons: "12:34:56",
+  pipes: "a | b | c"
+}

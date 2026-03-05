@@ -1,0 +1,18 @@
+; All scalar types in one document
+{
+  nothing: null,
+  yes: true,
+  no: false,
+  zero: 0,
+  answer: 42,
+  negative: -7,
+  pi: 3.14159,
+  tiny: 0.001,
+  big: 1000000,
+  pos_inf: Inf,
+  neg_inf: -Inf,
+  not_a_number: NaN,
+  greeting: "Hello, world!",
+  empty_str: "",
+  path: "C:\Program Files\MyApp"
+}
