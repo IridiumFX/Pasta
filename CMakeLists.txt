@@ -18,9 +18,9 @@ add_library(pasta
 )
 
 target_include_directories(pasta
-    PUBLIC  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/main/h>
+    PUBLIC  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/main/h>
             $<INSTALL_INTERFACE:include>
-    PRIVATE ${CMAKE_SOURCE_DIR}/src/main/c
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/main/c
 )
 
 if(BUILD_SHARED_LIBS)
@@ -55,7 +55,7 @@ if(PASTA_BUILD_TESTS)
     add_executable(pasta_test src/test/c/pasta_test.c)
     target_link_libraries(pasta_test PRIVATE pasta)
     target_compile_definitions(pasta_test PRIVATE
-        PASTA_TEST_RESOURCES="${CMAKE_SOURCE_DIR}/src/test/resources"
+        PASTA_TEST_RESOURCES="${CMAKE_CURRENT_SOURCE_DIR}/src/test/resources"
     )
 endif()
 
