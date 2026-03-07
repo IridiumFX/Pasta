@@ -96,6 +96,7 @@ PASTA_API int pasta_set_len(PastaValue *map, const char *key, size_t key_len, Pa
 #define PASTA_PRETTY   0   /* indented, multiline (default) */
 #define PASTA_COMPACT  1   /* single-line, minimal whitespace */
 #define PASTA_SECTIONS 2   /* emit root map as @section containers (OR with PRETTY/COMPACT) */
+#define PASTA_SORTED   4   /* sort map keys lexicographically (deterministic output) */
 
 /* Serialize a value tree to a malloc'd Pasta string. Caller must free(). */
 PASTA_API char *pasta_write(const PastaValue *v, int flags);
