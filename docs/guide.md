@@ -505,8 +505,9 @@ Returns `NULL` on allocation failure.
 | `PASTA_PRETTY`   | `0`   | Indented with newlines (default).         |
 | `PASTA_COMPACT`  | `1`   | Single-line, minimal whitespace.          |
 | `PASTA_SECTIONS` | `2`   | Emit root map as `@section` containers.   |
+| `PASTA_SORTED`   | `4`   | Sort map keys lexicographically.          |
 
-Flags can be combined with `|`: `PASTA_COMPACT | PASTA_SECTIONS`.
+Flags can be combined with `|`: `PASTA_COMPACT | PASTA_SECTIONS | PASTA_SORTED`.
 
 **Compact:**
 
@@ -530,6 +531,18 @@ free(s);
 
 Pretty output uses 2-space indentation and places each member/element on
 its own line. Empty containers stay on one line (`[]`, `{}`).
+
+**Sorted (canonical form):**
+
+```c
+char *s = pasta_write(root, PASTA_COMPACT | PASTA_SORTED);
+// Keys are sorted lexicographically — same data always produces
+// identical output, regardless of insertion order.
+free(s);
+```
+
+`PASTA_SORTED` sorts map keys at every level of nesting, making the output
+deterministic. This is useful for checksums, diffs, and version control.
 
 ### 4.2 Writing to a File
 

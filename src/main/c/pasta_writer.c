@@ -144,12 +144,34 @@ static int write_number(Buf *b, double n) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Sorted index helper                                                */
+/* ------------------------------------------------------------------ */
+
+/* Build a sorted index array for map members. Caller must free(). */
+static size_t *sorted_indices(const PastaMember *items, size_t count) {
+    size_t *idx = (size_t *)malloc(count * sizeof(size_t));
+    if (!idx) return NULL;
+    for (size_t i = 0; i < count; i++) idx[i] = i;
+    /* Simple insertion sort — config maps are small */
+    for (size_t i = 1; i < count; i++) {
+        size_t tmp = idx[i];
+        size_t j = i;
+        while (j > 0 && strcmp(items[idx[j - 1]].key, items[tmp].key) > 0) {
+            idx[j] = idx[j - 1];
+            j--;
+        }
+        idx[j] = tmp;
+    }
+    return idx;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Recursive writer                                                   */
 /* ------------------------------------------------------------------ */
 
-static int write_value(Buf *b, const PastaValue *v, int compact, int depth);
+static int write_value(Buf *b, const PastaValue *v, int compact, int sorted, int depth);
 
-static int write_array(Buf *b, const PastaValue *v, int compact, int depth) {
+static int write_array(Buf *b, const PastaValue *v, int compact, int sorted, int depth) {
     size_t count = v->as.array.count;
     if (count == 0) return buf_puts(b, "[]");
 
@@ -162,7 +184,7 @@ static int write_array(Buf *b, const PastaValue *v, int compact, int depth) {
             if (buf_putc(b, '\n')) return -1;
             if (buf_indent(b, depth + 1)) return -1;
         }
-        if (write_value(b, v->as.array.items[i], compact, depth + 1)) return -1;
+        if (write_value(b, v->as.array.items[i], compact, sorted, depth + 1)) return -1;
         if (!compact && i + 1 < count) {
             if (buf_putc(b, ',')) return -1;
         }
@@ -176,26 +198,35 @@ static int write_array(Buf *b, const PastaValue *v, int compact, int depth) {
     return 0;
 }
 
-static int write_map(Buf *b, const PastaValue *v, int compact, int depth) {
+static int write_map(Buf *b, const PastaValue *v, int compact, int sorted, int depth) {
     size_t count = v->as.map.count;
     if (count == 0) return buf_puts(b, "{}");
 
+    size_t *order = NULL;
+    if (sorted && count > 1) {
+        order = sorted_indices(v->as.map.items, count);
+        if (!order) return -1;
+    }
+
     if (buf_putc(b, '{')) return -1;
 
-    for (size_t i = 0; i < count; i++) {
+    for (size_t n = 0; n < count; n++) {
+        size_t i = order ? order[n] : n;
         if (compact) {
-            if (i > 0 && buf_puts(b, ", ")) return -1;
+            if (n > 0 && buf_puts(b, ", ")) { free(order); return -1; }
         } else {
-            if (buf_putc(b, '\n')) return -1;
-            if (buf_indent(b, depth + 1)) return -1;
+            if (buf_putc(b, '\n')) { free(order); return -1; }
+            if (buf_indent(b, depth + 1)) { free(order); return -1; }
         }
-        if (write_label(b, v->as.map.items[i].key)) return -1;
-        if (buf_puts(b, ": ")) return -1;
-        if (write_value(b, v->as.map.items[i].value, compact, depth + 1)) return -1;
-        if (!compact && i + 1 < count) {
-            if (buf_putc(b, ',')) return -1;
+        if (write_label(b, v->as.map.items[i].key)) { free(order); return -1; }
+        if (buf_puts(b, ": ")) { free(order); return -1; }
+        if (write_value(b, v->as.map.items[i].value, compact, sorted, depth + 1)) { free(order); return -1; }
+        if (!compact && n + 1 < count) {
+            if (buf_putc(b, ',')) { free(order); return -1; }
         }
     }
+
+    free(order);
 
     if (!compact) {
         if (buf_putc(b, '\n')) return -1;
@@ -205,7 +236,7 @@ static int write_map(Buf *b, const PastaValue *v, int compact, int depth) {
     return 0;
 }
 
-static int write_value(Buf *b, const PastaValue *v, int compact, int depth) {
+static int write_value(Buf *b, const PastaValue *v, int compact, int sorted, int depth) {
     if (!v) return buf_puts(b, "null");
 
     switch (v->type) {
@@ -213,8 +244,8 @@ static int write_value(Buf *b, const PastaValue *v, int compact, int depth) {
     case PASTA_BOOL:   return buf_puts(b, v->as.boolean ? "true" : "false");
     case PASTA_NUMBER: return write_number(b, v->as.number);
     case PASTA_STRING: return write_string(b, v->as.string.data, v->as.string.len);
-    case PASTA_ARRAY:  return write_array(b, v, compact, depth);
-    case PASTA_MAP:    return write_map(b, v, compact, depth);
+    case PASTA_ARRAY:  return write_array(b, v, compact, sorted, depth);
+    case PASTA_MAP:    return write_map(b, v, compact, sorted, depth);
     }
     return -1;
 }
@@ -223,26 +254,34 @@ static int write_value(Buf *b, const PastaValue *v, int compact, int depth) {
 /*  Section writer                                                     */
 /* ------------------------------------------------------------------ */
 
-static int write_sections(Buf *b, const PastaValue *v, int compact) {
-    if (!v || v->type != PASTA_MAP) return write_value(b, v, compact, 0);
+static int write_sections(Buf *b, const PastaValue *v, int compact, int sorted) {
+    if (!v || v->type != PASTA_MAP) return write_value(b, v, compact, sorted, 0);
 
     size_t count = v->as.map.count;
-    for (size_t i = 0; i < count; i++) {
-        if (i > 0) {
-            if (buf_putc(b, '\n')) return -1;
+    size_t *order = NULL;
+    if (sorted && count > 1) {
+        order = sorted_indices(v->as.map.items, count);
+        if (!order) return -1;
+    }
+
+    for (size_t n = 0; n < count; n++) {
+        size_t i = order ? order[n] : n;
+        if (n > 0) {
+            if (buf_putc(b, '\n')) { free(order); return -1; }
         }
-        if (buf_putc(b, '@')) return -1;
-        if (write_label(b, v->as.map.items[i].key)) return -1;
+        if (buf_putc(b, '@')) { free(order); return -1; }
+        if (write_label(b, v->as.map.items[i].key)) { free(order); return -1; }
         if (compact) {
-            if (buf_putc(b, ' ')) return -1;
+            if (buf_putc(b, ' ')) { free(order); return -1; }
         } else {
-            if (buf_putc(b, '\n')) return -1;
+            if (buf_putc(b, '\n')) { free(order); return -1; }
         }
-        if (write_value(b, v->as.map.items[i].value, compact, 0)) return -1;
+        if (write_value(b, v->as.map.items[i].value, compact, sorted, 0)) { free(order); return -1; }
         if (!compact) {
-            if (buf_putc(b, '\n')) return -1;
+            if (buf_putc(b, '\n')) { free(order); return -1; }
         }
     }
+    free(order);
     return 0;
 }
 
@@ -256,12 +295,13 @@ PASTA_API char *pasta_write(const PastaValue *v, int flags) {
 
     int compact  = (flags & PASTA_COMPACT) != 0;
     int sections = (flags & PASTA_SECTIONS) != 0;
+    int sorted   = (flags & PASTA_SORTED) != 0;
 
     int err;
     if (sections) {
-        err = write_sections(&b, v, compact);
+        err = write_sections(&b, v, compact, sorted);
     } else {
-        err = write_value(&b, v, compact, 0);
+        err = write_value(&b, v, compact, sorted, 0);
     }
 
     if (err) {

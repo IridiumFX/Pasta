@@ -2265,6 +2265,127 @@ static void test_file_sections(void) {
 }
 
 /* ================================================================== */
+/*  46. PASTA_SORTED: deterministic output                             */
+/* ================================================================== */
+
+static void test_sorted_output(void) {
+    SUITE("Sorted output");
+
+    /* Build a map with keys in reverse order */
+    PastaValue *map = pasta_new_map();
+    pasta_set(map, "zebra", pasta_new_number(1));
+    pasta_set(map, "apple", pasta_new_number(2));
+    pasta_set(map, "mango", pasta_new_number(3));
+
+    /* Without sorted: insertion order */
+    char *unsorted = pasta_write(map, PASTA_COMPACT);
+    ASSERT(unsorted != NULL, "write unsorted");
+    ASSERT(strstr(unsorted, "zebra") < strstr(unsorted, "apple"), "unsorted: zebra before apple");
+
+    /* With sorted: lexicographic order */
+    char *sorted = pasta_write(map, PASTA_COMPACT | PASTA_SORTED);
+    ASSERT(sorted != NULL, "write sorted");
+    ASSERT(strstr(sorted, "apple") < strstr(sorted, "mango"), "sorted: apple before mango");
+    ASSERT(strstr(sorted, "mango") < strstr(sorted, "zebra"), "sorted: mango before zebra");
+
+    /* Roundtrip preserves values */
+    PastaResult r;
+    PastaValue *v2 = pasta_parse_cstr(sorted, &r);
+    ASSERT(v2 != NULL, "sorted roundtrip parse");
+    ASSERT(pasta_get_number(pasta_map_get(v2, "apple")) == 2.0, "sorted roundtrip apple");
+    ASSERT(pasta_get_number(pasta_map_get(v2, "zebra")) == 1.0, "sorted roundtrip zebra");
+    ASSERT(pasta_get_number(pasta_map_get(v2, "mango")) == 3.0, "sorted roundtrip mango");
+    pasta_free(v2);
+    free(unsorted);
+    free(sorted);
+    pasta_free(map);
+
+    /* Deterministic: same input produces identical output */
+    PastaValue *m1 = pasta_new_map();
+    pasta_set(m1, "c", pasta_new_number(3));
+    pasta_set(m1, "a", pasta_new_number(1));
+    pasta_set(m1, "b", pasta_new_number(2));
+    PastaValue *m2 = pasta_new_map();
+    pasta_set(m2, "b", pasta_new_number(2));
+    pasta_set(m2, "c", pasta_new_number(3));
+    pasta_set(m2, "a", pasta_new_number(1));
+    char *s1 = pasta_write(m1, PASTA_COMPACT | PASTA_SORTED);
+    char *s2 = pasta_write(m2, PASTA_COMPACT | PASTA_SORTED);
+    ASSERT(s1 != NULL && s2 != NULL, "both write");
+    ASSERT(strcmp(s1, s2) == 0, "deterministic: same output regardless of insertion order");
+    free(s1); free(s2);
+    pasta_free(m1); pasta_free(m2);
+
+    /* Nested maps sorted recursively */
+    PastaValue *outer = pasta_new_map();
+    PastaValue *inner = pasta_new_map();
+    pasta_set(inner, "z", pasta_new_number(1));
+    pasta_set(inner, "a", pasta_new_number(2));
+    pasta_set(outer, "beta", inner);
+    pasta_set(outer, "alpha", pasta_new_string("first"));
+    sorted = pasta_write(outer, PASTA_COMPACT | PASTA_SORTED);
+    ASSERT(sorted != NULL, "write nested sorted");
+    ASSERT(strstr(sorted, "alpha") < strstr(sorted, "beta"), "outer sorted");
+    ASSERT(strstr(sorted, "a: 2") < strstr(sorted, "z: 1"), "inner sorted");
+    v2 = pasta_parse_cstr(sorted, &r);
+    ASSERT(v2 != NULL, "nested sorted roundtrip parse");
+    ASSERT(strcmp(pasta_get_string(pasta_map_get(v2, "alpha")), "first") == 0, "nested roundtrip alpha");
+    ASSERT(pasta_get_number(pasta_map_get(pasta_map_get(v2, "beta"), "a")) == 2.0, "nested roundtrip beta.a");
+    pasta_free(v2); free(sorted);
+    pasta_free(outer);
+
+    /* Pretty + sorted */
+    map = pasta_new_map();
+    pasta_set(map, "z", pasta_new_number(1));
+    pasta_set(map, "a", pasta_new_number(2));
+    sorted = pasta_write(map, PASTA_PRETTY | PASTA_SORTED);
+    ASSERT(sorted != NULL, "write pretty sorted");
+    ASSERT(strstr(sorted, "a") < strstr(sorted, "z"), "pretty sorted order");
+    v2 = pasta_parse_cstr(sorted, &r);
+    ASSERT(v2 != NULL, "pretty sorted roundtrip parse");
+    ASSERT(pasta_get_number(pasta_map_get(v2, "a")) == 2.0, "pretty sorted a=2");
+    ASSERT(pasta_get_number(pasta_map_get(v2, "z")) == 1.0, "pretty sorted z=1");
+    pasta_free(v2); free(sorted);
+    pasta_free(map);
+
+    /* Sections + sorted */
+    PastaValue *root = pasta_new_map();
+    PastaValue *sec_z = pasta_new_map();
+    pasta_set(sec_z, "x", pasta_new_number(1));
+    PastaValue *sec_a = pasta_new_map();
+    pasta_set(sec_a, "y", pasta_new_number(2));
+    pasta_set(root, "zoo", sec_z);
+    pasta_set(root, "alpha", sec_a);
+    sorted = pasta_write(root, PASTA_SECTIONS | PASTA_SORTED);
+    ASSERT(sorted != NULL, "write sections sorted");
+    ASSERT(strstr(sorted, "@alpha") < strstr(sorted, "@zoo"), "sections sorted order");
+    v2 = pasta_parse_cstr(sorted, &r);
+    ASSERT(v2 != NULL, "sections sorted roundtrip parse");
+    ASSERT(pasta_get_number(pasta_map_get(pasta_map_get(v2, "alpha"), "y")) == 2.0, "sections roundtrip alpha.y");
+    ASSERT(pasta_get_number(pasta_map_get(pasta_map_get(v2, "zoo"), "x")) == 1.0, "sections roundtrip zoo.x");
+    pasta_free(v2); free(sorted);
+    pasta_free(root);
+
+    /* Single-key map: sorted is a no-op */
+    map = pasta_new_map();
+    pasta_set(map, "only", pasta_new_number(42));
+    sorted = pasta_write(map, PASTA_COMPACT | PASTA_SORTED);
+    ASSERT(sorted != NULL, "single key sorted");
+    ASSERT(strstr(sorted, "only: 42") != NULL, "single key content");
+    free(sorted);
+    pasta_free(map);
+
+    /* Empty map: sorted is safe */
+    map = pasta_new_map();
+    sorted = pasta_write(map, PASTA_COMPACT | PASTA_SORTED);
+    ASSERT(sorted != NULL && strcmp(sorted, "{}") == 0, "empty map sorted");
+    free(sorted);
+    pasta_free(map);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  MAIN                                                               */
 /* ================================================================== */
 
@@ -2327,6 +2448,9 @@ int main(void) {
     test_sections_inline();
     test_sections_writer();
     test_file_sections();
+
+    /* Sorted output */
+    test_sorted_output();
 
     printf("\n========================================\n");
     printf("  Suites: %d / %d passed\n", suite_passed, suite_run);
