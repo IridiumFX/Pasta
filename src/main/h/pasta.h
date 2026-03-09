@@ -27,7 +27,8 @@ typedef enum {
     PASTA_NUMBER,
     PASTA_STRING,
     PASTA_ARRAY,
-    PASTA_MAP
+    PASTA_MAP,
+    PASTA_LABEL
 } PastaType;
 
 /* Opaque value handle */
@@ -66,6 +67,8 @@ PASTA_API int          pasta_get_bool(const PastaValue *v);
 PASTA_API double       pasta_get_number(const PastaValue *v);
 PASTA_API const char  *pasta_get_string(const PastaValue *v);
 PASTA_API size_t       pasta_get_string_len(const PastaValue *v);
+PASTA_API const char  *pasta_get_label(const PastaValue *v);
+PASTA_API size_t       pasta_get_label_len(const PastaValue *v);
 
 /* Containers */
 PASTA_API size_t             pasta_count(const PastaValue *v);
@@ -82,6 +85,8 @@ PASTA_API PastaValue *pasta_new_bool(int b);
 PASTA_API PastaValue *pasta_new_number(double n);
 PASTA_API PastaValue *pasta_new_string(const char *s);
 PASTA_API PastaValue *pasta_new_string_len(const char *s, size_t len);
+PASTA_API PastaValue *pasta_new_label(const char *s);
+PASTA_API PastaValue *pasta_new_label_len(const char *s, size_t len);
 PASTA_API PastaValue *pasta_new_array(void);
 PASTA_API PastaValue *pasta_new_map(void);
 

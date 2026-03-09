@@ -5,57 +5,62 @@ PASTA: Plain And Simple Text Archive
 BNF Grammar
 -----------
 
-pasta				: blank , containers ;
-containers			: blank , container-seq | blank , section-seq ;
-container-seq		: container , { blank , container } ;
-section-seq			: section , { blank , section } ;
-section				: "@" , label , blank , container ;
+pasta               : blank , containers ;
+containers          : blank , container-seq | blank , section-seq ;
+container-seq       : container , { blank , container } ;
+section-seq         : section , { blank , section } ;
+section             : "@" , label , blank , container ;
 
-container			: map | array ;
+container           : map | array ;
 
-map					: "{" , members , "}" ;
-array 				: "[ , elements , "]" ;
+map                 : "{" , members , "}" ;
+array               : "[" , elements , "]" ;
 
-members 			: blank | memberlist  ;
-member-list			: member , { blank , "," , blank , member } ;
-member 				: blank , label , blank , ":" , blank , element ;
+members             : blank | member-list ;
+member-list         : member , { blank , "," , blank , member } ;
+member              : blank , label , blank , ":" , blank , element ;
 
-elements			: blank | elements-list ;
-elements-list		: element , { blank , ", " , blank , element } ;
-element 			: blank , value , blank ;
+elements            : blank | elements-list ;
+elements-list       : element , { blank , "," , blank , element } ;
+element             : blank , value , blank ;
 
-value				: container | type | void ;
-type				: string | boolean | number ;
-void				: "null" ;
+value               : container | type | void | label-ref ;
+type                : string | boolean | number ;
+void                : "null" ;
 
-label 				: unquoted-label | quoted-label ;
-unquoted-label		: labelchar , { labelchar } ;
-quoted-label		: "\"" , { stringchar } , "\"" ;
+(* A label-ref in value position names a section for alforno link
+   resolution. Keywords (true, false, null, Inf, NaN) take precedence
+   over label-ref during parsing and are never treated as references. *)
+label-ref           : unquoted-label ;
 
-string 				: simple-string | multiline-string ;
-simple-string		: "\"" , { stringchar } , "\"" ;
-multiline-string	: "\"\"\"" , { anychar-but-triple-quote } , "\"\"\"" ;
+label               : unquoted-label | quoted-label ;
+unquoted-label      : labelchar , { labelchar } ;
+quoted-label        : "\"" , { stringchar } , "\"" ;
 
-boolean 			: "true" | "false"
-number 				: float-constant | signed-integer , [ "." , digits ] ;
-float-constant 		: "Inf" | "-Inf" | "NaN ;
-signed-integer		: [ "-" ] , integer ;
-integer 			: "0" | natural , { digit } ;
-digits 				: digit , { digit } ;
+string              : simple-string | multiline-string ;
+simple-string       : "\"" , { stringchar } , "\"" ;
+multiline-string    : "\"\"\"" , { anychar-but-triple-quote } , "\"\"\"" ;
+
+boolean             : "true" | "false" ;
+number              : float-constant | signed-integer , [ "." , digits ] ;
+float-constant      : "Inf" | "-Inf" | "NaN" ;
+signed-integer      : [ "-" ] , integer ;
+integer             : "0" | natural , { digit } ;
+digits              : digit , { digit } ;
 
 (* Character classes *)
 
-stringchar 			: labelchar | nonalphanumeric ;
-labelchar			: alphabet | digit | labelsymbol ;
-alphabet			: uppercase | lowercase ;
-digit 				: "0" | natural ;
-natural				: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
-labelsymbol			: "!" | "#" | "$" | "%" | "&" | "_" ;
-nonalphanumeric		: "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | "/" | ":"
-					| ";" | "<" | "=" | ">" | "?" | "@" | "[" | "\" | "]" | "^"
-					| "`" | "{" | "|" | "}" | "~" ;
-blank 				: { nonprint | comment } ;
-comment 			: ";" , { anychar-but-newline } ;
-nonprint 			: EOL | 0x20 | 0x09 ;
-EOL 				: 0x0A | 0x0D ;
-empty				: ;
+stringchar          : labelchar | nonalphanumeric ;
+labelchar           : alphabet | digit | labelsymbol ;
+alphabet            : uppercase | lowercase ;
+digit               : "0" | natural ;
+natural             : "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+labelsymbol         : "!" | "#" | "$" | "%" | "&" | "_" ;
+nonalphanumeric     : "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | "/" | ":"
+                    | ";" | "<" | "=" | ">" | "?" | "@" | "[" | "\" | "]" | "^"
+                    | "`" | "{" | "|" | "}" | "~" ;
+blank               : { nonprint | comment } ;
+comment             : ";" , { anychar-but-newline } ;
+nonprint            : EOL | 0x20 | 0x09 ;
+EOL                 : 0x0A | 0x0D ;
+empty               : ;

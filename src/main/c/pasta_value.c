@@ -33,6 +33,17 @@ PastaValue *pasta_value_string(const char *s, size_t len) {
     return v;
 }
 
+PastaValue *pasta_value_label(const char *s, size_t len) {
+    PastaValue *v = alloc_value(PASTA_LABEL);
+    if (!v) return NULL;
+    v->as.string.data = (char *)malloc(len + 1);
+    if (!v->as.string.data) { free(v); return NULL; }
+    memcpy(v->as.string.data, s, len);
+    v->as.string.data[len] = '\0';
+    v->as.string.len = len;
+    return v;
+}
+
 PastaValue *pasta_value_array(void) {
     PastaValue *v = alloc_value(PASTA_ARRAY);
     if (!v) return NULL;
@@ -92,6 +103,12 @@ PASTA_API PastaValue *pasta_new_string(const char *s) {
 PASTA_API PastaValue *pasta_new_string_len(const char *s, size_t len) {
     return pasta_value_string(s, len);
 }
+PASTA_API PastaValue *pasta_new_label(const char *s) {
+    return pasta_value_label(s, s ? strlen(s) : 0);
+}
+PASTA_API PastaValue *pasta_new_label_len(const char *s, size_t len) {
+    return pasta_value_label(s, len);
+}
 PASTA_API PastaValue *pasta_new_array(void) { return pasta_value_array(); }
 PASTA_API PastaValue *pasta_new_map(void) { return pasta_value_map(); }
 
@@ -116,6 +133,7 @@ PASTA_API void pasta_free(PastaValue *v) {
     if (!v) return;
     switch (v->type) {
         case PASTA_STRING:
+        case PASTA_LABEL:
             free(v->as.string.data);
             break;
         case PASTA_ARRAY:
@@ -158,6 +176,14 @@ PASTA_API const char *pasta_get_string(const PastaValue *v) {
 
 PASTA_API size_t pasta_get_string_len(const PastaValue *v) {
     return (v && v->type == PASTA_STRING) ? v->as.string.len : 0;
+}
+
+PASTA_API const char *pasta_get_label(const PastaValue *v) {
+    return (v && v->type == PASTA_LABEL) ? v->as.string.data : NULL;
+}
+
+PASTA_API size_t pasta_get_label_len(const PastaValue *v) {
+    return (v && v->type == PASTA_LABEL) ? v->as.string.len : 0;
 }
 
 PASTA_API size_t pasta_count(const PastaValue *v) {

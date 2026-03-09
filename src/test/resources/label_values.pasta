@@ -1,0 +1,20 @@
+; Test file for label values (section references)
+{
+  name: "my_service",
+  port: 8080,
+  debug: false,
+  fallback: null,
+
+  ; Label values referencing sections
+  tls_ref: tls,
+  db_ref: database,
+
+  ; Array mixing labels and strings
+  deps: [network, logging, "literal_string", metrics],
+
+  ; Nested map with label value
+  nested: {
+    link: target,
+    weight: 10
+  }
+}

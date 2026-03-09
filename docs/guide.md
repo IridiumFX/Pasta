@@ -46,6 +46,7 @@ numbers, booleans, and null — while adding comments and relaxed label syntax.
 | **number**| `42`, `-3.14`, `0`, `1000000`     | Signed integers and decimals.            |
 | **float constant** | `Inf`, `-Inf`, `NaN`    | IEEE 754 special values, case-sensitive. |
 | **string**| `"hello"`, `"""multi\nline"""`    | Double-quoted; triple-quoted for multiline.|
+| **label** | `myRef`, `_config`, `$target`     | Bare label in value position (section ref).|
 | **array** | `[1, 2, 3]`                       | Ordered, comma-separated elements.       |
 | **map**   | `{key: "value"}`                  | Unquoted or quoted keys, colon separator.|
 
@@ -137,7 +138,51 @@ string is `"""` itself, since it terminates the string.
 The writer automatically uses triple quotes when a string contains newlines,
 and single quotes otherwise.
 
-### 1.5 Comments
+### 1.5 Label Values (Section References)
+
+A bare label — the same unquoted identifier used for map keys — can also
+appear in **value position**. This produces a `PASTA_LABEL` value, distinct
+from strings, which is useful for referencing named sections without
+resorting to string conventions like `"@name"`.
+
+```
+@network {
+  bind: "0.0.0.0",
+  port: 8080
+}
+
+@tls {
+  cert: "/etc/ssl/cert.pem",
+  key: "/etc/ssl/key.pem"
+}
+
+@api {
+  consumes: [network],
+  port: "required",
+  tls: tls
+}
+```
+
+In the example above, `tls` and `network` in value position are label
+values, not strings. In code, you detect them by type:
+
+```c
+const PastaValue *ref = pasta_map_get(api, "tls");
+if (pasta_type(ref) == PASTA_LABEL) {
+    const char *name = pasta_get_label(ref);
+    // name == "tls" — look up the section by name
+}
+```
+
+**Keyword precedence:** `true`, `false`, `null`, `Inf`, and `NaN` are
+always parsed as their respective types (bool, null, number) — never as
+label values. Labels like `trueish` or `nullable` that merely *contain*
+a keyword substring are unaffected.
+
+The writer emits label values as bare identifiers (no quotes), so they
+roundtrip correctly through parse → write → parse.
+
+### 1.6 Comments
 
 Comments start with a semicolon (`;`) and extend to the end of the line.
 They can appear anywhere whitespace is allowed.
@@ -151,7 +196,7 @@ They can appear anywhere whitespace is allowed.
 }
 ```
 
-### 1.6 Whitespace
+### 1.7 Whitespace
 
 Spaces, tabs (`0x09`), newlines (`0x0A`), and carriage returns (`0x0D`) are
 all treated as blank space. Pasta is completely whitespace-insensitive between
@@ -174,7 +219,7 @@ tokens — you can write everything on one line or spread it across many:
 
 Both forms parse to the same value tree.
 
-### 1.7 Sections
+### 1.8 Sections
 
 For documents with multiple root-level containers that need random access,
 use **named sections** with `@`:
@@ -373,7 +418,7 @@ int       pasta_is_null(const PastaValue *v);
 ```
 
 `PastaType` is one of: `PASTA_NULL`, `PASTA_BOOL`, `PASTA_NUMBER`,
-`PASTA_STRING`, `PASTA_ARRAY`, `PASTA_MAP`.
+`PASTA_STRING`, `PASTA_ARRAY`, `PASTA_MAP`, `PASTA_LABEL`.
 
 **Scalars:**
 
@@ -382,6 +427,8 @@ int         pasta_get_bool(const PastaValue *v);       // 0 or 1
 double      pasta_get_number(const PastaValue *v);     // IEEE 754 double
 const char *pasta_get_string(const PastaValue *v);     // null-terminated
 size_t      pasta_get_string_len(const PastaValue *v); // byte length
+const char *pasta_get_label(const PastaValue *v);      // null-terminated
+size_t      pasta_get_label_len(const PastaValue *v);  // byte length
 ```
 
 All scalar accessors are safe to call on any type — they return zero/NULL
@@ -608,6 +655,8 @@ PastaValue *pasta_new_bool(int b);
 PastaValue *pasta_new_number(double n);
 PastaValue *pasta_new_string(const char *s);         // from C string
 PastaValue *pasta_new_string_len(const char *s, size_t len); // from buffer
+PastaValue *pasta_new_label(const char *s);          // from C string
+PastaValue *pasta_new_label_len(const char *s, size_t len);  // from buffer
 PastaValue *pasta_new_array(void);
 PastaValue *pasta_new_map(void);
 ```

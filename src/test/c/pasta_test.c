@@ -58,6 +58,9 @@ static void print_value(const PastaValue *v, int depth) {
     case PASTA_STRING:
         printf("\"%s\"", pasta_get_string(v));
         break;
+    case PASTA_LABEL:
+        printf("%s", pasta_get_label(v));
+        break;
     case PASTA_ARRAY: {
         size_t count = pasta_count(v);
         if (count == 0) { printf("[]"); break; }
@@ -136,6 +139,9 @@ static int values_equal(const PastaValue *a, const PastaValue *b) {
     case PASTA_STRING:
         return pasta_get_string_len(a) == pasta_get_string_len(b)
             && strcmp(pasta_get_string(a), pasta_get_string(b)) == 0;
+    case PASTA_LABEL:
+        return pasta_get_label_len(a) == pasta_get_label_len(b)
+            && strcmp(pasta_get_label(a), pasta_get_label(b)) == 0;
     case PASTA_ARRAY:
         if (pasta_count(a) != pasta_count(b)) return 0;
         for (size_t i = 0; i < pasta_count(a); i++)
@@ -596,7 +602,6 @@ static void test_error_cases(void) {
     parse_expect_fail("only comment", "; just a comment\n", PASTA_ERR_UNEXPECTED_EOF);
     parse_expect_fail("double comma", "[1,,2]", PASTA_OK);
     parse_expect_fail("missing value", "{a: }", PASTA_OK);
-    parse_expect_fail("bare label", "hello", PASTA_OK);
 
     SUITE_OK();
 }
@@ -672,6 +677,8 @@ static void test_api_safety(void) {
     ASSERT(pasta_get_number(NULL) == 0.0, "get_number(NULL)");
     ASSERT(pasta_get_string(NULL) == NULL, "get_string(NULL)");
     ASSERT(pasta_get_string_len(NULL) == 0, "get_string_len(NULL)");
+    ASSERT(pasta_get_label(NULL) == NULL, "get_label(NULL)");
+    ASSERT(pasta_get_label_len(NULL) == 0, "get_label_len(NULL)");
     ASSERT(pasta_count(NULL) == 0, "count(NULL)");
     ASSERT(pasta_array_get(NULL, 0) == NULL, "array_get(NULL)");
     ASSERT(pasta_map_get(NULL, "k") == NULL, "map_get(NULL)");
@@ -2386,6 +2393,445 @@ static void test_sorted_output(void) {
 }
 
 /* ================================================================== */
+/*  LABEL VALUES - parsing                                             */
+/* ================================================================== */
+
+static void test_label_values(void) {
+    SUITE("Label values: parsing");
+    PastaValue *v;
+
+    /* Bare label at top level */
+    v = parse_and_print("bare label", "hello");
+    ASSERT(v != NULL, "parsed");
+    ASSERT(pasta_type(v) == PASTA_LABEL, "type is LABEL");
+    ASSERT(strcmp(pasta_get_label(v), "hello") == 0, "value is hello");
+    ASSERT(pasta_get_label_len(v) == 5, "len is 5");
+    pasta_free(v);
+
+    /* Single character label */
+    v = parse_and_print("single char label", "x");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_LABEL, "type");
+    ASSERT(strcmp(pasta_get_label(v), "x") == 0, "value is x");
+    ASSERT(pasta_get_label_len(v) == 1, "len is 1");
+    pasta_free(v);
+
+    /* Label with digits */
+    v = parse_and_print("label with digits", "item42");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_LABEL, "type");
+    ASSERT(strcmp(pasta_get_label(v), "item42") == 0, "value");
+    pasta_free(v);
+
+    /* Label with all label symbols */
+    v = parse_and_print("label with symbols", "a!b#c$d%e&f_g");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_LABEL, "type");
+    ASSERT(strcmp(pasta_get_label(v), "a!b#c$d%e&f_g") == 0, "value");
+    pasta_free(v);
+
+    /* Label starting with symbol */
+    v = parse_and_print("symbol-start label", "_private");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_LABEL, "type");
+    ASSERT(strcmp(pasta_get_label(v), "_private") == 0, "value");
+    pasta_free(v);
+
+    v = parse_and_print("dollar-start label", "$ref");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_LABEL, "type");
+    ASSERT(strcmp(pasta_get_label(v), "$ref") == 0, "value");
+    pasta_free(v);
+
+    v = parse_and_print("hash-start label", "#tag");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_LABEL, "type");
+    ASSERT(strcmp(pasta_get_label(v), "#tag") == 0, "value");
+    pasta_free(v);
+
+    /* Label with whitespace around it */
+    v = parse_and_print("label with blanks", "  \t myref \n ");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_LABEL, "type");
+    ASSERT(strcmp(pasta_get_label(v), "myref") == 0, "value");
+    pasta_free(v);
+
+    /* Keywords are NOT label values */
+    v = parse_and_print("true is not label", "true");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_BOOL, "true is bool");
+    pasta_free(v);
+
+    v = parse_and_print("false is not label", "false");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_BOOL, "false is bool");
+    pasta_free(v);
+
+    v = parse_and_print("null is not label", "null");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_NULL, "null is null");
+    pasta_free(v);
+
+    v = parse_and_print("Inf is not label", "Inf");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_NUMBER, "Inf is number");
+    pasta_free(v);
+
+    v = parse_and_print("NaN is not label", "NaN");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_NUMBER, "NaN is number");
+    pasta_free(v);
+
+    /* Label accessor returns NULL for non-label types */
+    v = parse_and_print("string not label", "\"hello\"");
+    ASSERT(pasta_get_label(v) == NULL, "get_label on string is NULL");
+    ASSERT(pasta_get_label_len(v) == 0, "get_label_len on string is 0");
+    pasta_free(v);
+
+    v = parse_and_print("number not label", "42");
+    ASSERT(pasta_get_label(v) == NULL, "get_label on number is NULL");
+    pasta_free(v);
+
+    /* String accessor returns NULL for label type */
+    v = parse_and_print("label not string", "hello");
+    ASSERT(pasta_get_string(v) == NULL, "get_string on label is NULL");
+    ASSERT(pasta_get_string_len(v) == 0, "get_string_len on label is 0");
+    pasta_free(v);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  LABEL VALUES - in containers                                       */
+/* ================================================================== */
+
+static void test_label_values_in_containers(void) {
+    SUITE("Label values: in containers");
+    PastaValue *v;
+
+    /* Label as map value */
+    v = parse_and_print("map with label value", "{ref: mySection}");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_MAP, "root is map");
+    const PastaValue *ref = pasta_map_get(v, "ref");
+    ASSERT(ref != NULL && pasta_type(ref) == PASTA_LABEL, "value is label");
+    ASSERT(strcmp(pasta_get_label(ref), "mySection") == 0, "label text");
+    pasta_free(v);
+
+    /* Label in array */
+    v = parse_and_print("array with labels", "[foo, bar, baz]");
+    ASSERT(v != NULL && pasta_type(v) == PASTA_ARRAY, "root is array");
+    ASSERT(pasta_count(v) == 3, "count 3");
+    ASSERT(pasta_type(pasta_array_get(v, 0)) == PASTA_LABEL, "[0] is label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 0)), "foo") == 0, "[0]=foo");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 1)), "bar") == 0, "[1]=bar");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 2)), "baz") == 0, "[2]=baz");
+    pasta_free(v);
+
+    /* Mixed types including labels */
+    v = parse_and_print("mixed with labels",
+        "[1, \"two\", myRef, true, null, otherRef]");
+    ASSERT(v != NULL && pasta_count(v) == 6, "count 6");
+    ASSERT(pasta_type(pasta_array_get(v, 0)) == PASTA_NUMBER, "[0] number");
+    ASSERT(pasta_type(pasta_array_get(v, 1)) == PASTA_STRING, "[1] string");
+    ASSERT(pasta_type(pasta_array_get(v, 2)) == PASTA_LABEL, "[2] label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 2)), "myRef") == 0, "[2]=myRef");
+    ASSERT(pasta_type(pasta_array_get(v, 3)) == PASTA_BOOL, "[3] bool");
+    ASSERT(pasta_type(pasta_array_get(v, 4)) == PASTA_NULL, "[4] null");
+    ASSERT(pasta_type(pasta_array_get(v, 5)) == PASTA_LABEL, "[5] label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 5)), "otherRef") == 0, "[5]=otherRef");
+    pasta_free(v);
+
+    /* Multiple label values in a map */
+    v = parse_and_print("map multiple labels",
+        "{a: ref1, b: ref2, c: ref3}");
+    ASSERT(v != NULL && pasta_count(v) == 3, "count 3");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "a")), "ref1") == 0, "a=ref1");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "b")), "ref2") == 0, "b=ref2");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "c")), "ref3") == 0, "c=ref3");
+    pasta_free(v);
+
+    /* Nested container with label values */
+    v = parse_and_print("nested with labels",
+        "{outer: {inner: myRef}, list: [x, y]}");
+    ASSERT(v != NULL, "parsed");
+    ASSERT(pasta_type(pasta_map_get(pasta_map_get(v, "outer"), "inner")) == PASTA_LABEL, "nested label");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(pasta_map_get(v, "outer"), "inner")), "myRef") == 0, "nested value");
+    ASSERT(pasta_type(pasta_array_get(pasta_map_get(v, "list"), 0)) == PASTA_LABEL, "list[0] label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(pasta_map_get(v, "list"), 0)), "x") == 0, "list[0]=x");
+    pasta_free(v);
+
+    /* Label value alongside keywords — keywords still take precedence */
+    v = parse_and_print("labels near keywords",
+        "{a: trueish, b: falsey, c: nullable, d: Infinite}");
+    ASSERT(v != NULL && pasta_count(v) == 4, "count 4");
+    ASSERT(pasta_type(pasta_map_get(v, "a")) == PASTA_LABEL, "trueish is label");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "a")), "trueish") == 0, "trueish");
+    ASSERT(pasta_type(pasta_map_get(v, "b")) == PASTA_LABEL, "falsey is label");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "b")), "falsey") == 0, "falsey");
+    ASSERT(pasta_type(pasta_map_get(v, "c")) == PASTA_LABEL, "nullable is label");
+    ASSERT(pasta_type(pasta_map_get(v, "d")) == PASTA_LABEL, "Infinite is label");
+    pasta_free(v);
+
+    /* Label same as key name (common for section refs) */
+    v = parse_and_print("label matches key",
+        "{tls: tls, db: database}");
+    ASSERT(v != NULL, "parsed");
+    ASSERT(pasta_type(pasta_map_get(v, "tls")) == PASTA_LABEL, "tls is label");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "tls")), "tls") == 0, "tls value");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "db")), "database") == 0, "db value");
+    pasta_free(v);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  LABEL VALUES - writer                                              */
+/* ================================================================== */
+
+static void test_label_values_writer(void) {
+    SUITE("Label values: writer");
+    PastaValue *v;
+    char *out;
+
+    /* Compact output */
+    v = parse_and_print("label compact", "hello");
+    out = pasta_write(v, PASTA_COMPACT);
+    printf("  [compact] %s\n", out);
+    ASSERT(strcmp(out, "hello") == 0, "bare label output");
+    free(out); pasta_free(v);
+
+    /* Map with label values compact */
+    v = parse_and_print("map label compact", "{ref: mySection}");
+    out = pasta_write(v, PASTA_COMPACT);
+    printf("  [map compact] %s\n", out);
+    ASSERT(strcmp(out, "{ref: mySection}") == 0, "map label compact");
+    free(out); pasta_free(v);
+
+    /* Array with labels compact */
+    v = parse_and_print("array labels compact", "[foo, bar, baz]");
+    out = pasta_write(v, PASTA_COMPACT);
+    printf("  [array compact] %s\n", out);
+    ASSERT(strcmp(out, "[foo, bar, baz]") == 0, "array labels compact");
+    free(out); pasta_free(v);
+
+    /* Mixed types compact */
+    v = parse_and_print("mixed compact",
+        "{name: \"svc\", port: 8080, tls: myTls, debug: false}");
+    out = pasta_write(v, PASTA_COMPACT);
+    printf("  [mixed compact] %s\n", out);
+    ASSERT(strstr(out, "tls: myTls") != NULL, "label in mixed compact");
+    free(out); pasta_free(v);
+
+    /* Pretty output */
+    v = parse_and_print("label pretty", "{ref: mySection, other: otherRef}");
+    out = pasta_write(v, PASTA_PRETTY);
+    printf("  [pretty]\n%s", out);
+    ASSERT(strstr(out, "  ref: mySection,\n") != NULL, "pretty label indent");
+    ASSERT(strstr(out, "  other: otherRef\n") != NULL, "pretty label last");
+    free(out); pasta_free(v);
+
+    /* Sorted with labels */
+    v = parse_and_print("labels sorted", "{z: refZ, a: refA}");
+    out = pasta_write(v, PASTA_COMPACT | PASTA_SORTED);
+    printf("  [sorted] %s\n", out);
+    ASSERT(strstr(out, "a: refA") < strstr(out, "z: refZ"), "sorted label order");
+    free(out); pasta_free(v);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  LABEL VALUES - roundtrip                                           */
+/* ================================================================== */
+
+static void test_label_values_roundtrip(void) {
+    SUITE("Label values: roundtrip");
+
+    roundtrip("bare label", "hello");
+    roundtrip("label with symbols", "_my$ref");
+    roundtrip("label in array", "[foo, bar, baz]");
+    roundtrip("label in map", "{ref: mySection}");
+    roundtrip("mixed with labels",
+        "{name: \"svc\", link: myRef, port: 8080, debug: false}");
+    roundtrip("nested labels",
+        "{outer: {inner: myRef}, list: [x, y]}");
+    roundtrip("label near keywords",
+        "[trueish, falsey, nullable, Infinite]");
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  LABEL VALUES - builder API                                         */
+/* ================================================================== */
+
+static void test_label_values_builder(void) {
+    SUITE("Label values: builder API");
+    char *out;
+
+    /* Basic construction */
+    PastaValue *v = pasta_new_label("myRef");
+    ASSERT(v != NULL, "new_label");
+    ASSERT(pasta_type(v) == PASTA_LABEL, "type is LABEL");
+    ASSERT(strcmp(pasta_get_label(v), "myRef") == 0, "value");
+    ASSERT(pasta_get_label_len(v) == 5, "len");
+    out = pasta_write(v, PASTA_COMPACT);
+    ASSERT(strcmp(out, "myRef") == 0, "write label");
+    free(out); pasta_free(v);
+
+    /* new_label_len */
+    v = pasta_new_label_len("helloWORLD", 5);
+    ASSERT(v != NULL, "new_label_len");
+    ASSERT(strcmp(pasta_get_label(v), "hello") == 0, "truncated");
+    ASSERT(pasta_get_label_len(v) == 5, "len 5");
+    pasta_free(v);
+
+    /* Label in map via builder */
+    PastaValue *map = pasta_new_map();
+    pasta_set(map, "link", pasta_new_label("target"));
+    pasta_set(map, "name", pasta_new_string("svc"));
+    out = pasta_write(map, PASTA_COMPACT);
+    printf("  [builder map] %s\n", out);
+    ASSERT(strstr(out, "link: target") != NULL, "builder label in map");
+    ASSERT(strstr(out, "name: \"svc\"") != NULL, "builder string in map");
+
+    /* Roundtrip the builder result */
+    PastaResult r;
+    PastaValue *v2 = pasta_parse_cstr(out, &r);
+    ASSERT(v2 != NULL && r.code == PASTA_OK, "builder roundtrip parse");
+    ASSERT(values_equal(map, v2), "builder roundtrip equal");
+    pasta_free(v2); free(out); pasta_free(map);
+
+    /* Label in array via builder */
+    PastaValue *arr = pasta_new_array();
+    pasta_push(arr, pasta_new_label("foo"));
+    pasta_push(arr, pasta_new_number(42));
+    pasta_push(arr, pasta_new_label("bar"));
+    out = pasta_write(arr, PASTA_COMPACT);
+    printf("  [builder array] %s\n", out);
+    ASSERT(strcmp(out, "[foo, 42, bar]") == 0, "builder array");
+    free(out); pasta_free(arr);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  LABEL VALUES - sections use case                                   */
+/* ================================================================== */
+
+static void test_label_values_sections(void) {
+    SUITE("Label values: sections use case");
+    PastaValue *v;
+    char *out;
+
+    /* Parse a sectioned document where values reference section names */
+    const char *input =
+        "@network {\n"
+        "  bind: \"0.0.0.0\",\n"
+        "  port: 8080\n"
+        "}\n"
+        "@tls {\n"
+        "  cert: \"/etc/ssl/cert.pem\",\n"
+        "  key: \"/etc/ssl/key.pem\"\n"
+        "}\n"
+        "@api {\n"
+        "  consumes: [network],\n"
+        "  port: \"required\",\n"
+        "  tls: tls\n"
+        "}\n";
+
+    PastaResult r;
+    v = pasta_parse_cstr(input, &r);
+    printf("  [sections with label refs]\n");
+    ASSERT(v != NULL && r.code == PASTA_OK, "parsed");
+    ASSERT(pasta_type(v) == PASTA_MAP, "root is map");
+    ASSERT(pasta_count(v) == 3, "3 sections");
+
+    /* Verify the label references */
+    const PastaValue *api = pasta_map_get(v, "api");
+    ASSERT(api != NULL, "api section");
+
+    const PastaValue *consumes = pasta_map_get(api, "consumes");
+    ASSERT(consumes != NULL && pasta_count(consumes) == 1, "consumes array");
+    ASSERT(pasta_type(pasta_array_get(consumes, 0)) == PASTA_LABEL, "consumes[0] is label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(consumes, 0)), "network") == 0, "consumes=network");
+
+    const PastaValue *tls_ref = pasta_map_get(api, "tls");
+    ASSERT(tls_ref != NULL && pasta_type(tls_ref) == PASTA_LABEL, "tls is label");
+    ASSERT(strcmp(pasta_get_label(tls_ref), "tls") == 0, "tls ref value");
+
+    /* Write back as sections and re-parse */
+    out = pasta_write(v, PASTA_SECTIONS);
+    ASSERT(out != NULL, "write sections");
+    printf("  [sections output]\n%s", out);
+    PastaValue *v2 = pasta_parse_cstr(out, &r);
+    ASSERT(v2 != NULL && r.code == PASTA_OK, "re-parse sections");
+    ASSERT(values_equal(v, v2), "sections roundtrip");
+    pasta_free(v2); free(out);
+
+    /* Write compact and re-parse */
+    out = pasta_write(v, PASTA_COMPACT);
+    ASSERT(out != NULL, "write compact");
+    printf("  [compact] %s\n", out);
+    v2 = pasta_parse_cstr(out, &r);
+    ASSERT(v2 != NULL && r.code == PASTA_OK, "re-parse compact");
+    ASSERT(values_equal(v, v2), "compact roundtrip");
+    pasta_free(v2); free(out);
+
+    pasta_free(v);
+    SUITE_OK();
+}
+
+/* ================================================================== */
+/*  LABEL VALUES - file test                                           */
+/* ================================================================== */
+
+static void test_file_label_values(void) {
+    SUITE("File: label_values.pasta");
+
+    PastaValue *v = parse_file("label_values.pasta");
+    if (!v) { ASSERT(0, "file load"); return; }
+
+    ASSERT(pasta_type(v) == PASTA_MAP, "root is map");
+
+    /* Check label values */
+    const PastaValue *tls = pasta_map_get(v, "tls_ref");
+    ASSERT(tls != NULL && pasta_type(tls) == PASTA_LABEL, "tls_ref is label");
+    ASSERT(strcmp(pasta_get_label(tls), "tls") == 0, "tls_ref=tls");
+
+    const PastaValue *db = pasta_map_get(v, "db_ref");
+    ASSERT(db != NULL && pasta_type(db) == PASTA_LABEL, "db_ref is label");
+    ASSERT(strcmp(pasta_get_label(db), "database") == 0, "db_ref=database");
+
+    /* Check mixed values */
+    ASSERT(pasta_type(pasta_map_get(v, "name")) == PASTA_STRING, "name is string");
+    ASSERT(pasta_type(pasta_map_get(v, "port")) == PASTA_NUMBER, "port is number");
+    ASSERT(pasta_type(pasta_map_get(v, "debug")) == PASTA_BOOL, "debug is bool");
+    ASSERT(pasta_type(pasta_map_get(v, "fallback")) == PASTA_NULL, "fallback is null");
+
+    /* Array with mixed labels and other types */
+    const PastaValue *deps = pasta_map_get(v, "deps");
+    ASSERT(deps != NULL && pasta_count(deps) == 4, "4 deps");
+    ASSERT(pasta_type(pasta_array_get(deps, 0)) == PASTA_LABEL, "dep[0] label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(deps, 0)), "network") == 0, "dep[0]=network");
+    ASSERT(pasta_type(pasta_array_get(deps, 1)) == PASTA_LABEL, "dep[1] label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(deps, 1)), "logging") == 0, "dep[1]=logging");
+    ASSERT(pasta_type(pasta_array_get(deps, 2)) == PASTA_STRING, "dep[2] string");
+    ASSERT(pasta_type(pasta_array_get(deps, 3)) == PASTA_LABEL, "dep[3] label");
+
+    /* Nested map with label */
+    const PastaValue *inner = pasta_map_get(v, "nested");
+    ASSERT(inner != NULL, "nested exists");
+    ASSERT(pasta_type(pasta_map_get(inner, "link")) == PASTA_LABEL, "nested.link is label");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(inner, "link")), "target") == 0, "nested.link=target");
+
+    /* Roundtrip */
+    char *out = pasta_write(v, PASTA_COMPACT);
+    PastaResult r;
+    PastaValue *v2 = pasta_parse_cstr(out, &r);
+    ASSERT(v2 != NULL && r.code == PASTA_OK, "roundtrip parse");
+    ASSERT(values_equal(v, v2), "roundtrip equal");
+    pasta_free(v2); free(out);
+
+    out = pasta_write(v, PASTA_PRETTY);
+    v2 = pasta_parse_cstr(out, &r);
+    ASSERT(v2 != NULL && r.code == PASTA_OK, "pretty roundtrip parse");
+    ASSERT(values_equal(v, v2), "pretty roundtrip equal");
+    pasta_free(v2); free(out);
+
+    pasta_free(v);
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  MAIN                                                               */
 /* ================================================================== */
 
@@ -2451,6 +2897,15 @@ int main(void) {
 
     /* Sorted output */
     test_sorted_output();
+
+    /* Label values */
+    test_label_values();
+    test_label_values_in_containers();
+    test_label_values_writer();
+    test_label_values_roundtrip();
+    test_label_values_builder();
+    test_label_values_sections();
+    test_file_label_values();
 
     printf("\n========================================\n");
     printf("  Suites: %d / %d passed\n", suite_passed, suite_run);

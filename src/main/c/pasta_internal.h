@@ -30,6 +30,7 @@ PastaValue *pasta_value_null(void);
 PastaValue *pasta_value_bool(int b);
 PastaValue *pasta_value_number(double n);
 PastaValue *pasta_value_string(const char *s, size_t len);
+PastaValue *pasta_value_label(const char *s, size_t len);
 PastaValue *pasta_value_array(void);
 PastaValue *pasta_value_map(void);
 

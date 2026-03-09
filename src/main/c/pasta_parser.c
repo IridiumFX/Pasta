@@ -183,6 +183,12 @@ static PastaValue *parse_value(Parser *p) {
         case TOK_TRUE:  advance(p); return pasta_value_bool(1);
         case TOK_FALSE: advance(p); return pasta_value_bool(0);
         case TOK_NULL:  advance(p); return pasta_value_null();
+        case TOK_LABEL: {
+            PastaValue *v = pasta_value_label(p->current.start, p->current.len);
+            if (!v) parser_error(p, "allocation failed");
+            advance(p);
+            return v;
+        }
         case TOK_EOF:
             parser_error_code(p, PASTA_ERR_UNEXPECTED_EOF, "unexpected end of input");
             return NULL;

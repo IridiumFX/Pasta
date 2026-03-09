@@ -244,6 +244,7 @@ static int write_value(Buf *b, const PastaValue *v, int compact, int sorted, int
     case PASTA_BOOL:   return buf_puts(b, v->as.boolean ? "true" : "false");
     case PASTA_NUMBER: return write_number(b, v->as.number);
     case PASTA_STRING: return write_string(b, v->as.string.data, v->as.string.len);
+    case PASTA_LABEL:  return buf_append(b, v->as.string.data, v->as.string.len);
     case PASTA_ARRAY:  return write_array(b, v, compact, sorted, depth);
     case PASTA_MAP:    return write_map(b, v, compact, sorted, depth);
     }
