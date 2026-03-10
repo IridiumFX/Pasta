@@ -2272,6 +2272,82 @@ static void test_file_sections(void) {
 }
 
 /* ================================================================== */
+/*  PastaResult.sections field                                         */
+/* ================================================================== */
+
+static void test_result_sections_flag(void) {
+    SUITE("PastaResult.sections flag");
+    PastaResult r;
+    PastaValue *v;
+
+    /* Section document sets sections=1 */
+    v = pasta_parse_cstr("@app {port: 8080}\n@db {host: \"localhost\"}", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "section parse ok");
+    ASSERT(r.sections == 1, "sections=1 for @section input");
+    pasta_free(v);
+
+    /* Single section still sets sections=1 */
+    v = pasta_parse_cstr("@main {key: \"value\"}", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "single section parse ok");
+    ASSERT(r.sections == 1, "sections=1 for single @section");
+    pasta_free(v);
+
+    /* Plain map does NOT set sections */
+    v = pasta_parse_cstr("{a: 1, b: 2}", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "plain map parse ok");
+    ASSERT(r.sections == 0, "sections=0 for plain map");
+    pasta_free(v);
+
+    /* Plain array does NOT set sections */
+    v = pasta_parse_cstr("[1, 2, 3]", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "plain array parse ok");
+    ASSERT(r.sections == 0, "sections=0 for plain array");
+    pasta_free(v);
+
+    /* Scalar does NOT set sections */
+    v = pasta_parse_cstr("42", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "scalar parse ok");
+    ASSERT(r.sections == 0, "sections=0 for scalar");
+    pasta_free(v);
+
+    /* Multi-container does NOT set sections */
+    v = pasta_parse_cstr("{a: 1}\n{b: 2}", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "multi-container parse ok");
+    ASSERT(r.sections == 0, "sections=0 for multi-container");
+    pasta_free(v);
+
+    /* Sections with comments and whitespace */
+    v = pasta_parse_cstr("; header\n\n  @cfg {x: 1}\n; footer\n", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "sections with comments ok");
+    ASSERT(r.sections == 1, "sections=1 with comments/whitespace");
+    pasta_free(v);
+
+    /* Quoted section name still sets sections=1 */
+    v = pasta_parse_cstr("@\"my-section\" {x: 42}", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "quoted section ok");
+    ASSERT(r.sections == 1, "sections=1 for quoted section name");
+    pasta_free(v);
+
+    /* Error case: sections flag still set even on error after @ */
+    v = pasta_parse_cstr("@orphan", &r);
+    ASSERT(v == NULL, "error: no container after section name");
+    ASSERT(r.sections == 1, "sections=1 even on section parse error");
+
+    /* Label value at top level is NOT sections */
+    v = pasta_parse_cstr("hello", &r);
+    ASSERT(v != NULL && r.code == PASTA_OK, "label parse ok");
+    ASSERT(r.sections == 0, "sections=0 for bare label");
+    pasta_free(v);
+
+    /* NULL result pointer doesn't crash */
+    v = pasta_parse_cstr("@s {a: 1}", NULL);
+    ASSERT(v != NULL, "null result ptr with sections ok");
+    pasta_free(v);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  46. PASTA_SORTED: deterministic output                             */
 /* ================================================================== */
 
@@ -2894,6 +2970,7 @@ int main(void) {
     test_sections_inline();
     test_sections_writer();
     test_file_sections();
+    test_result_sections_flag();
 
     /* Sorted output */
     test_sorted_output();

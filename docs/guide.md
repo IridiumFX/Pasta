@@ -392,6 +392,7 @@ typedef struct {
     PastaError code;       // Error code (PASTA_OK on success)
     int        line;       // 1-based line number
     int        col;        // 1-based column number
+    int        sections;   // 1 if the document used @name sections
     char       message[256];
 } PastaResult;
 ```

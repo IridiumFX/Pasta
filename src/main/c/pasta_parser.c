@@ -10,10 +10,11 @@ typedef struct {
 
 static void parser_init(Parser *p, const char *src, size_t len) {
     lexer_init(&p->lex, src, len);
-    p->had_error    = 0;
-    p->result.code  = PASTA_OK;
-    p->result.line  = 0;
-    p->result.col   = 0;
+    p->had_error         = 0;
+    p->result.code       = PASTA_OK;
+    p->result.line       = 0;
+    p->result.col        = 0;
+    p->result.sections   = 0;
     p->result.message[0] = '\0';
     p->current = lexer_next(&p->lex);
 }
@@ -222,6 +223,7 @@ PASTA_API PastaValue *pasta_parse(const char *input, size_t len, PastaResult *re
 
     /* Check for @section syntax */
     if (check(&p, TOK_AT)) {
+        p.result.sections = 1;
         /* Section mode: @name container, @name container, ... → map */
         PastaValue *map = pasta_value_map();
         if (!map) { parser_error(&p, "allocation failed"); if (result) *result = p.result; return NULL; }

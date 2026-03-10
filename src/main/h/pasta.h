@@ -48,6 +48,7 @@ typedef struct {
     PastaError code;
     int        line;
     int        col;
+    int        sections;      /* 1 if the document used @name sections */
     char       message[256];
 } PastaResult;
 
