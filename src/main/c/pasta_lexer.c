@@ -42,7 +42,7 @@ static void skip_blank(Lexer *lex) {
 
 static int is_label_symbol(char c) {
     return c == '!' || c == '#' || c == '$' || c == '%'
-        || c == '&' || c == '_';
+        || c == '&' || c == '.' || c == '_';
 }
 
 static int is_label_char(char c) {

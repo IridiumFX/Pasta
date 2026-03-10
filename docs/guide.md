@@ -57,7 +57,7 @@ one or more characters from the following set:
 
 - Letters: `a`-`z`, `A`-`Z`
 - Digits: `0`-`9`
-- Symbols: `!` `#` `$` `%` `&` `_`
+- Symbols: `!` `#` `$` `%` `&` `.` `_`
 
 ```
 {
@@ -65,17 +65,17 @@ one or more characters from the following set:
   with_underscore: 2,
   $price: 3,
   item#5: 4,
-  bang!: 5
+  bang!: 5,
+  server.host: "localhost"
 }
 ```
 
-For keys containing characters outside the label set (dashes, dots, spaces,
+For keys containing characters outside the label set (dashes, spaces,
 etc.), use **quoted labels**:
 
 ```
 {
   "Content-Type": "application/json",
-  "server.host": "localhost",
   "with spaces": "value",
   regular: "bare labels still work"
 }

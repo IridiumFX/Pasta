@@ -485,13 +485,35 @@ static void test_label_chars(void) {
 
     v = parse_and_print("all label symbols",
         "{simple: 1, with_underscore: 2, bang!: 3, #hash: 4,"
-        " $dollar: 5, percent%: 6, amp&ersand: 7}");
-    ASSERT(v != NULL && pasta_count(v) == 7, "count 7");
+        " $dollar: 5, percent%: 6, amp&ersand: 7, server.host: 8}");
+    ASSERT(v != NULL && pasta_count(v) == 8, "count 8");
     ASSERT(pasta_get_number(pasta_map_get(v, "bang!")) == 3.0, "bang");
     ASSERT(pasta_get_number(pasta_map_get(v, "#hash")) == 4.0, "hash");
     ASSERT(pasta_get_number(pasta_map_get(v, "$dollar")) == 5.0, "dollar");
     ASSERT(pasta_get_number(pasta_map_get(v, "percent%")) == 6.0, "percent");
     ASSERT(pasta_get_number(pasta_map_get(v, "amp&ersand")) == 7.0, "ampersand");
+    ASSERT(pasta_get_number(pasta_map_get(v, "server.host")) == 8.0, "dot");
+    pasta_free(v);
+
+    /* Dotted labels */
+    v = parse_and_print("dotted keys",
+        "{a.b: 1, x.y.z: 2, .leading: 3, trailing.: 4}");
+    ASSERT(v != NULL && pasta_count(v) == 4, "count 4");
+    ASSERT(pasta_get_number(pasta_map_get(v, "a.b")) == 1.0, "a.b");
+    ASSERT(pasta_get_number(pasta_map_get(v, "x.y.z")) == 2.0, "x.y.z");
+    ASSERT(pasta_get_number(pasta_map_get(v, ".leading")) == 3.0, ".leading");
+    ASSERT(pasta_get_number(pasta_map_get(v, "trailing.")) == 4.0, "trailing.");
+    pasta_free(v);
+
+    /* Dotted label values */
+    v = parse_and_print("dotted label values",
+        "{ref: config.tls, deps: [net.primary, net.secondary]}");
+    ASSERT(v != NULL, "parsed");
+    ASSERT(pasta_type(pasta_map_get(v, "ref")) == PASTA_LABEL, "ref is label");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "ref")), "config.tls") == 0, "ref=config.tls");
+    const PastaValue *deps = pasta_map_get(v, "deps");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(deps, 0)), "net.primary") == 0, "dep[0]");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(deps, 1)), "net.secondary") == 0, "dep[1]");
     pasta_free(v);
 
     v = parse_and_print("mixed case", "{ABC: 1, abc: 2, AbC: 3}");
@@ -840,6 +862,10 @@ static void test_write_roundtrip(void) {
     roundtrip("deep nesting", "{a: {b: {c: {d: [1, [2, [3]]]}}}}");
     roundtrip("label symbols",
         "{$price: 1, _id: 2, bang!: 3, #tag: 4}");
+    roundtrip("dotted keys",
+        "{server.host: \"localhost\", db.pool.max: 20}");
+    roundtrip("dotted label values",
+        "{ref: config.tls, deps: [net.a, net.b]}");
 
     SUITE_OK();
 }
