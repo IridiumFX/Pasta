@@ -1701,10 +1701,17 @@ static void test_builder_containers(void) {
     ASSERT(pasta_get_bool(pasta_map_get(map, "active")) == 1, "active=true");
     pasta_free(map);
 
-    /* Type safety */
+    /* Type safety — on failure, caller still owns the rejected value */
     PastaValue *num = pasta_new_number(42);
-    ASSERT(pasta_push(num, pasta_new_number(1)) == -1, "push on non-array");
-    ASSERT(pasta_set(num, "x", pasta_new_number(1)) == -1, "set on non-map");
+
+    PastaValue *rejected1 = pasta_new_number(1);
+    ASSERT(pasta_push(num, rejected1) == -1, "push on non-array");
+    pasta_free(rejected1);
+
+    PastaValue *rejected2 = pasta_new_number(1);
+    ASSERT(pasta_set(num, "x", rejected2) == -1, "set on non-map");
+    pasta_free(rejected2);
+
     pasta_free(num);
 
     SUITE_OK();
