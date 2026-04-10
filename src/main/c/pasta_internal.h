@@ -2,6 +2,7 @@
 #define PASTA_INTERNAL_H
 
 #include "pasta.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -15,6 +16,7 @@ typedef struct PastaMember {
 
 struct PastaValue {
     PastaType type;
+    uint8_t   num_fmt;   /* PASTA_NUM_DEC / _HEX / _BIN (0 for non-numbers) */
     union {
         int     boolean;
         double  number;
@@ -29,6 +31,7 @@ struct PastaValue {
 PastaValue *pasta_value_null(void);
 PastaValue *pasta_value_bool(int b);
 PastaValue *pasta_value_number(double n);
+PastaValue *pasta_value_number_fmt(double n, uint8_t fmt);
 PastaValue *pasta_value_string(const char *s, size_t len);
 PastaValue *pasta_value_label(const char *s, size_t len);
 PastaValue *pasta_value_array(void);

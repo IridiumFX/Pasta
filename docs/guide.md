@@ -43,12 +43,49 @@ numbers, booleans, and null — while adding comments and relaxed label syntax.
 |-----------|-----------------------------------|------------------------------------------|
 | **null**  | `null`                            | The absence of a value.                  |
 | **bool**  | `true`, `false`                   | Lowercase only.                          |
-| **number**| `42`, `-3.14`, `0`, `1000000`     | Signed integers and decimals.            |
+| **number**| `42`, `-3.14`, `0xFF`, `0b1010`   | Decimal, hex (`0x`), or binary (`0b`).   |
 | **float constant** | `Inf`, `-Inf`, `NaN`    | IEEE 754 special values, case-sensitive. |
 | **string**| `"hello"`, `"""multi\nline"""`    | Double-quoted; triple-quoted for multiline.|
 | **label** | `myRef`, `_config`, `$target`     | Bare label in value position (section ref).|
 | **array** | `[1, 2, 3]`                       | Ordered, comma-separated elements.       |
 | **map**   | `{key: "value"}`                  | Unquoted or quoted keys, colon separator.|
+
+### 1.2.1 Hex and Binary Numbers
+
+Numbers can be written in hexadecimal with the `0x` or `0X` prefix, and in
+binary with the `0b` or `0B` prefix. Both accept an optional leading `-` for
+negative values.
+
+```
+{
+  port: 0x1F90,
+  mask: 0xFF00,
+  flags: 0b10110001,
+  offset: -0x10
+}
+```
+
+Hex and binary numbers are stored as IEEE 754 doubles (like all numbers) but
+the format is preserved through roundtrips: `0xFF` writes back as `0xff`,
+`0b1010` writes back as `0b1010`. The writer always emits lowercase hex
+digits.
+
+The builder API can create format-tagged numbers:
+
+```c
+PastaValue *port = pasta_new_number_fmt(8080, PASTA_NUM_HEX);
+// writes as 0x1f90
+
+PastaValue *flags = pasta_new_number_fmt(10, PASTA_NUM_BIN);
+// writes as 0b1010
+```
+
+Query the format of a parsed number with `pasta_get_number_fmt()`:
+
+```c
+int fmt = pasta_get_number_fmt(v);
+// PASTA_NUM_DEC (0), PASTA_NUM_HEX (1), or PASTA_NUM_BIN (2)
+```
 
 ### 1.3 Labels (Map Keys)
 
@@ -426,6 +463,7 @@ int       pasta_is_null(const PastaValue *v);
 ```c
 int         pasta_get_bool(const PastaValue *v);       // 0 or 1
 double      pasta_get_number(const PastaValue *v);     // IEEE 754 double
+int         pasta_get_number_fmt(const PastaValue *v); // PASTA_NUM_DEC/HEX/BIN
 const char *pasta_get_string(const PastaValue *v);     // null-terminated
 size_t      pasta_get_string_len(const PastaValue *v); // byte length
 const char *pasta_get_label(const PastaValue *v);      // null-terminated
@@ -635,6 +673,8 @@ A few things to note about roundtrips:
   roundtrip byte-for-byte.
 - **Number precision.** Integers roundtrip exactly. Decimals use full
   `double` precision (`%.17g`) to avoid silent loss.
+- **Number format.** Hex (`0xFF`) and binary (`0b1010`) numbers preserve
+  their format through roundtrips. The writer emits lowercase hex digits.
 
 ### 4.4 NULL Safety
 
@@ -654,6 +694,7 @@ no parsing required. Build a tree, then write it out with `pasta_write`.
 PastaValue *pasta_new_null(void);
 PastaValue *pasta_new_bool(int b);
 PastaValue *pasta_new_number(double n);
+PastaValue *pasta_new_number_fmt(double n, int fmt);  // with format hint
 PastaValue *pasta_new_string(const char *s);         // from C string
 PastaValue *pasta_new_string_len(const char *s, size_t len); // from buffer
 PastaValue *pasta_new_label(const char *s);          // from C string
@@ -782,6 +823,7 @@ The lexer (`Lexer` struct) scans input one character at a time and produces
 - **Single-character tokens:** `{`, `}`, `[`, `]`, `:`, `,`.
 - **Strings:** scans from opening `"` to closing `"`. Detects `"""` for multiline.
 - **Numbers:** digits with optional leading `-` and optional `.` decimal part.
+  Also handles `0x`/`0X` hex and `0b`/`0B` binary prefixes.
 - **Keywords/Labels:** alphabetic or symbol-starting sequences are classified
   as `true`/`false`/`null`/`Inf`/`NaN` (keywords) or labels (map keys).
 
@@ -816,8 +858,10 @@ current token plus error state. On the first error, it sets `had_error`
 and all subsequent calls short-circuit and return `NULL`.
 
 String values are copied verbatim from between the quotes — there are no
-escape sequences to process. Numbers are converted to `double` via
-`strtod`, with special handling for `Inf`, `-Inf`, and `NaN`.
+escape sequences to process. Numbers are converted to `double` with
+special handling for `Inf`, `-Inf`, `NaN`, hex (`0x`), and binary (`0b`)
+prefixes. The parser tags each number with its format (`PASTA_NUM_DEC`,
+`_HEX`, or `_BIN`) so the writer can roundtrip the original notation.
 
 ### 6.4 Value Tree
 
@@ -826,6 +870,7 @@ The central data structure is `PastaValue`, defined in `pasta_internal.h`:
 ```c
 struct PastaValue {
     PastaType type;
+    uint8_t   num_fmt;   /* PASTA_NUM_DEC / _HEX / _BIN */
     union {
         int     boolean;
         double  number;

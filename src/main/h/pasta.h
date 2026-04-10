@@ -31,6 +31,11 @@ typedef enum {
     PASTA_LABEL
 } PastaType;
 
+/* Number format hints (for roundtrip fidelity) */
+#define PASTA_NUM_DEC  0   /* decimal (default) */
+#define PASTA_NUM_HEX  1   /* 0x prefix */
+#define PASTA_NUM_BIN  2   /* 0b prefix */
+
 /* Opaque value handle */
 typedef struct PastaValue PastaValue;
 
@@ -66,6 +71,7 @@ PASTA_API int          pasta_is_null(const PastaValue *v);
 /* Scalars */
 PASTA_API int          pasta_get_bool(const PastaValue *v);
 PASTA_API double       pasta_get_number(const PastaValue *v);
+PASTA_API int          pasta_get_number_fmt(const PastaValue *v);
 PASTA_API const char  *pasta_get_string(const PastaValue *v);
 PASTA_API size_t       pasta_get_string_len(const PastaValue *v);
 PASTA_API const char  *pasta_get_label(const PastaValue *v);
@@ -84,6 +90,7 @@ PASTA_API const PastaValue  *pasta_map_value(const PastaValue *v, size_t index);
 PASTA_API PastaValue *pasta_new_null(void);
 PASTA_API PastaValue *pasta_new_bool(int b);
 PASTA_API PastaValue *pasta_new_number(double n);
+PASTA_API PastaValue *pasta_new_number_fmt(double n, int fmt);
 PASTA_API PastaValue *pasta_new_string(const char *s);
 PASTA_API PastaValue *pasta_new_string_len(const char *s, size_t len);
 PASTA_API PastaValue *pasta_new_label(const char *s);

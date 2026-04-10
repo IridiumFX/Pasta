@@ -2941,6 +2941,142 @@ static void test_file_label_values(void) {
 }
 
 /* ================================================================== */
+/*  Hex and binary number literals                                     */
+/* ================================================================== */
+
+static void test_hex_numbers(void) {
+    SUITE("Hex number literals: parse, value, format, roundtrip");
+
+    /* Basic hex */
+    PastaResult r;
+    PastaValue *v = pasta_parse_cstr("0xff", &r);
+    ASSERT(r.code == PASTA_OK, "parse 0xff ok");
+    ASSERT(pasta_get_number(v) == 255.0, "0xff = 255");
+    ASSERT(pasta_get_number_fmt(v) == PASTA_NUM_HEX, "format = HEX");
+    char *s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "0xff") == 0, "roundtrip 0xff");
+    free(s);
+    pasta_free(v);
+
+    /* Uppercase 0X */
+    v = pasta_parse_cstr("0XDeadBeef", &r);
+    ASSERT(pasta_get_number(v) == 3735928559.0, "0XDeadBeef value");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "0xdeadbeef") == 0, "roundtrip lowercase");
+    free(s);
+    pasta_free(v);
+
+    /* Negative hex */
+    v = pasta_parse_cstr("-0x10", &r);
+    ASSERT(pasta_get_number(v) == -16.0, "-0x10 = -16");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "-0x10") == 0, "roundtrip -0x10");
+    free(s);
+    pasta_free(v);
+
+    /* Zero */
+    v = pasta_parse_cstr("0x0", &r);
+    ASSERT(pasta_get_number(v) == 0.0, "0x0 = 0");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "0x0") == 0, "roundtrip 0x0");
+    free(s);
+    pasta_free(v);
+
+    /* Hex in map */
+    v = pasta_parse_cstr("{ port: 0x1F90 }", &r);
+    ASSERT(r.code == PASTA_OK, "parse map with hex");
+    const PastaValue *port = pasta_map_get(v, "port");
+    ASSERT(pasta_get_number(port) == 8080.0, "0x1F90 = 8080");
+    ASSERT(pasta_get_number_fmt(port) == PASTA_NUM_HEX, "format = HEX");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strstr(s, "0x1f90") != NULL, "hex preserved in map output");
+    free(s);
+    pasta_free(v);
+
+    SUITE_OK();
+}
+
+static void test_binary_numbers(void) {
+    SUITE("Binary number literals: parse, value, format, roundtrip");
+
+    PastaResult r;
+    PastaValue *v = pasta_parse_cstr("0b1010", &r);
+    ASSERT(r.code == PASTA_OK, "parse 0b1010 ok");
+    ASSERT(pasta_get_number(v) == 10.0, "0b1010 = 10");
+    ASSERT(pasta_get_number_fmt(v) == PASTA_NUM_BIN, "format = BIN");
+    char *s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "0b1010") == 0, "roundtrip 0b1010");
+    free(s);
+    pasta_free(v);
+
+    /* Uppercase 0B */
+    v = pasta_parse_cstr("0B11111111", &r);
+    ASSERT(pasta_get_number(v) == 255.0, "0B11111111 = 255");
+    ASSERT(pasta_get_number_fmt(v) == PASTA_NUM_BIN, "format = BIN");
+    pasta_free(v);
+
+    /* Negative binary */
+    v = pasta_parse_cstr("-0b11", &r);
+    ASSERT(pasta_get_number(v) == -3.0, "-0b11 = -3");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "-0b11") == 0, "roundtrip -0b11");
+    free(s);
+    pasta_free(v);
+
+    /* Binary zero */
+    v = pasta_parse_cstr("0b0", &r);
+    ASSERT(pasta_get_number(v) == 0.0, "0b0 = 0");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "0b0") == 0, "roundtrip 0b0");
+    free(s);
+    pasta_free(v);
+
+    SUITE_OK();
+}
+
+static void test_hex_bin_mixed(void) {
+    SUITE("Hex/bin: mixed formats in array, builder API, backward compat");
+
+    /* Mixed array */
+    PastaResult r;
+    PastaValue *v = pasta_parse_cstr("[0xFF, 0b1010, 42]", &r);
+    ASSERT(r.code == PASTA_OK, "parse mixed array");
+    ASSERT(pasta_get_number_fmt(pasta_array_get(v, 0)) == PASTA_NUM_HEX, "[0] hex");
+    ASSERT(pasta_get_number_fmt(pasta_array_get(v, 1)) == PASTA_NUM_BIN, "[1] bin");
+    ASSERT(pasta_get_number_fmt(pasta_array_get(v, 2)) == PASTA_NUM_DEC, "[2] dec");
+    char *s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strstr(s, "0xff") != NULL, "hex in output");
+    ASSERT(s && strstr(s, "0b1010") != NULL, "bin in output");
+    ASSERT(s && strstr(s, "42") != NULL, "dec in output");
+    free(s);
+    pasta_free(v);
+
+    /* Builder API: new_number_fmt */
+    v = pasta_new_number_fmt(255, PASTA_NUM_HEX);
+    ASSERT(pasta_get_number(v) == 255.0, "builder hex value");
+    ASSERT(pasta_get_number_fmt(v) == PASTA_NUM_HEX, "builder hex fmt");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "0xff") == 0, "builder writes hex");
+    free(s);
+    pasta_free(v);
+
+    /* Builder API: plain new_number stays decimal */
+    v = pasta_new_number(255);
+    ASSERT(pasta_get_number_fmt(v) == PASTA_NUM_DEC, "default is DEC");
+    s = pasta_write(v, PASTA_COMPACT);
+    ASSERT(s && strcmp(s, "255") == 0, "default writes decimal");
+    free(s);
+    pasta_free(v);
+
+    /* Format query on non-number */
+    v = pasta_new_string("hello");
+    ASSERT(pasta_get_number_fmt(v) == 0, "non-number returns 0");
+    pasta_free(v);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  MAIN                                                               */
 /* ================================================================== */
 
@@ -3016,6 +3152,11 @@ int main(void) {
     test_label_values_builder();
     test_label_values_sections();
     test_file_label_values();
+
+    /* Hex and binary number literals */
+    test_hex_numbers();
+    test_binary_numbers();
+    test_hex_bin_mixed();
 
     printf("\n========================================\n");
     printf("  Suites: %d / %d passed\n", suite_passed, suite_run);

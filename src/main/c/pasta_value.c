@@ -22,6 +22,12 @@ PastaValue *pasta_value_number(double n) {
     return v;
 }
 
+PastaValue *pasta_value_number_fmt(double n, uint8_t fmt) {
+    PastaValue *v = alloc_value(PASTA_NUMBER);
+    if (v) { v->as.number = n; v->num_fmt = fmt; }
+    return v;
+}
+
 PastaValue *pasta_value_string(const char *s, size_t len) {
     PastaValue *v = alloc_value(PASTA_STRING);
     if (!v) return NULL;
@@ -97,6 +103,9 @@ int pasta_map_put(PastaValue *map, const char *key, size_t key_len, PastaValue *
 PASTA_API PastaValue *pasta_new_null(void) { return pasta_value_null(); }
 PASTA_API PastaValue *pasta_new_bool(int b) { return pasta_value_bool(b); }
 PASTA_API PastaValue *pasta_new_number(double n) { return pasta_value_number(n); }
+PASTA_API PastaValue *pasta_new_number_fmt(double n, int fmt) {
+    return pasta_value_number_fmt(n, (uint8_t)fmt);
+}
 PASTA_API PastaValue *pasta_new_string(const char *s) {
     return pasta_value_string(s, s ? strlen(s) : 0);
 }
@@ -168,6 +177,10 @@ PASTA_API int pasta_get_bool(const PastaValue *v) {
 
 PASTA_API double pasta_get_number(const PastaValue *v) {
     return (v && v->type == PASTA_NUMBER) ? v->as.number : 0.0;
+}
+
+PASTA_API int pasta_get_number_fmt(const PastaValue *v) {
+    return (v && v->type == PASTA_NUMBER) ? (int)v->num_fmt : 0;
 }
 
 PASTA_API const char *pasta_get_string(const PastaValue *v) {
