@@ -1,7 +1,7 @@
 #include "pasta_internal.h"
 #include <ctype.h>
 
-void lexer_init(Lexer *lex, const char *src, size_t len) {
+void pasta_lexer_init(Lexer *lex, const char *src, size_t len) {
     lex->src     = src;
     lex->src_len = len;
     lex->pos     = 0;
@@ -181,7 +181,7 @@ static Token lex_label_or_keyword(Lexer *lex) {
     return make_token(TOK_LABEL, start, len, start_line, start_col);
 }
 
-Token lexer_next(Lexer *lex) {
+Token pasta_lexer_next(Lexer *lex) {
     skip_blank(lex);
 
     if (lex_eof(lex))

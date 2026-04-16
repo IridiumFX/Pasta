@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export:*)",
+      "Bash(cmake:*)",
+      "Read(//c/Program Files/CMake/**)",
+      "Read(//c/Program Files \\(x86\\)/CMake/**)",
+      "Bash(where cmake)",
+      "Read(//mingw64/bin/**)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//c/msys64/mingw64/bin/**)",
+      "Bash(\"$CMAKE\":*)",
+      "Bash(\"$GCC\":*)",
+      "Bash(\"/c/Program Files/JetBrains/CLion 2025.3.3/bin/mingw/bin/gcc.exe\":*)",
+      "Bash(gcc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(wc:*)",
+      "Bash(sed 's/\\(.*$//')"
+    ]
+  }
+}

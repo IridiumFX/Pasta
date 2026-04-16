@@ -77,7 +77,7 @@ typedef struct {
     int         col;
 } Lexer;
 
-void  lexer_init(Lexer *lex, const char *src, size_t len);
-Token lexer_next(Lexer *lex);
+void  pasta_lexer_init(Lexer *lex, const char *src, size_t len);
+Token pasta_lexer_next(Lexer *lex);
 
 #endif /* PASTA_INTERNAL_H */

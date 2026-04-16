@@ -1,0 +1,77 @@
+IANA Media Type Registration: text/vnd.pasta
+=============================================
+
+Type name:              text
+
+Subtype name:           vnd.pasta
+
+Required parameters:    None
+
+Optional parameters:
+  charset               Always UTF-8.  Pasta documents use only the ASCII
+                        subset for syntax tokens (braces, brackets, colons,
+                        commas, semicolons, quotes, at-signs) and allow the
+                        full Unicode range inside quoted strings and multiline
+                        strings.  The charset parameter, if present, MUST be
+                        "UTF-8".
+
+Encoding considerations:
+  8bit.  Pasta documents are plain text.  All syntax characters are in the
+  ASCII range (U+0000..U+007F).  The NUL byte (0x00) is illegal everywhere
+  in a Pasta document.
+
+Security considerations:
+  Pasta is a data-only format.  It contains no executable code, no external
+  references that are resolved during parsing, and no macro or include
+  directives.  A conforming parser produces an in-memory value tree and
+  nothing else.
+
+  Label values (unquoted identifiers in value position) are inert data
+  within Pasta itself.  Higher-level systems that interpret labels as
+  cross-section references (e.g. Alforno) must validate those references
+  within their own security model.
+
+  As with any structured data format, implementations should guard against
+  resource exhaustion from deeply nested containers or extremely large
+  input documents.
+
+Interoperability considerations:
+  Pasta is a strict superset of a useful subset of JSON: any Pasta document
+  without comments, labels, or sections can be trivially converted to JSON.
+  Conversely, any JSON document whose keys are valid Pasta labels and whose
+  strings contain no escape sequences is a valid Pasta document.
+
+  The Basta format (media type application/vnd.basta) is a strict superset
+  of Pasta, adding binary blob values.  Any Pasta document is a valid Basta
+  document.  Any Basta document that contains no blob values is a valid
+  Pasta document.
+
+Published specification:
+  The Pasta BNF grammar is maintained at:
+  https://github.com/nicholasgasior/pasta (specs/Pasta.txt)
+
+Applications which use this media type:
+  Configuration file parsing, data serialization, and structured data
+  interchange in systems that benefit from human-readable, comment-friendly
+  formats.  The Alforno build system uses Pasta as its recipe format.
+
+Fragment identifier considerations:  N/A
+
+Restrictions on usage:  None
+
+Additional information:
+  Deprecated alias names for this type:   None
+  Magic number(s):      None (text format; starts with '{', '[', '@', or
+                        whitespace/comments)
+  File extension(s):    .pasta
+  Macintosh file type code:  None
+  Object Identifiers:   None
+
+Person to contact for further information:
+  Name:    Nicholas Gasior
+  Email:   nicholasgasior@gmail.com
+
+Intended usage:         COMMON
+
+Author:                 Nicholas Gasior
+Change controller:      Nicholas Gasior
