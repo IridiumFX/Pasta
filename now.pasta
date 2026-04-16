@@ -1,0 +1,9 @@
+{
+  group:    "dev.iridium",
+  artifact: "pasta",
+  version:  "0.2.0",
+  lang:     "c",
+  sources:  { dir: "src/main/c", headers: "src/main/h" },
+  compile:  { std: "c11", warnings: ["Wall", "Wextra"] },
+  link:     { output: "shared" }
+}
