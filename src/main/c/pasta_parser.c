@@ -1,5 +1,6 @@
 #include "pasta_internal.h"
 #include <stdio.h>
+#include <ctype.h>
 
 typedef struct {
     Lexer       lex;
@@ -52,9 +53,41 @@ static int expect(Parser *p, TokenType type, const char *msg) {
     return 0;
 }
 
-/* Is this token a valid map key? (label or quoted string) */
+static int label_symbol_char(char c) {
+    return c == '!' || c == '#' || c == '$' || c == '%'
+        || c == '&' || c == '.' || c == '_';
+}
+
+/* A number- or keyword-spelled token is, in key / section-name position, a
+   valid unquoted-label provided every byte of its lexeme is a labelchar.
+   This is what lets { 0: 1 }, { true: false } and @0 { } parse: the grammar's
+   key and section-name productions are `label`, and 0 / true are valid
+   unquoted-labels.  Signed or otherwise non-label spellings such as -5 or
+   -Inf contain '-', which is not a labelchar, so they are rejected. */
+static int token_is_unquoted_label(const Token *t) {
+    if (t->len == 0) return 0;
+    for (size_t i = 0; i < t->len; i++) {
+        unsigned char c = (unsigned char)t->start[i];
+        if (!isalnum(c) && !label_symbol_char((char)c)) return 0;
+    }
+    return 1;
+}
+
+/* Is this token usable as a map key or section name?
+   (unquoted-label | quoted-label, per the grammar) */
 static int is_key_token(const Parser *p) {
-    return check(p, TOK_LABEL) || check(p, TOK_STRING);
+    switch (p->current.type) {
+        case TOK_LABEL:
+        case TOK_STRING:
+            return 1;
+        case TOK_NUMBER:
+        case TOK_TRUE:
+        case TOK_FALSE:
+        case TOK_NULL:
+            return token_is_unquoted_label(&p->current);
+        default:
+            return 0;
+    }
 }
 
 /* Forward declaration */
@@ -261,8 +294,9 @@ PASTA_API PastaValue *pasta_parse(const char *input, size_t len, PastaResult *re
         while (!p.had_error && check(&p, TOK_AT)) {
             advance(&p); /* consume @ */
 
-            /* Section name: label or quoted string */
-            if (!check(&p, TOK_LABEL) && !check(&p, TOK_STRING)) {
+            /* Section name: label or quoted string (a section name is a
+               `label`, so number-/keyword-spelled names like @0 are valid). */
+            if (!is_key_token(&p)) {
                 parser_error(&p, "expected section name after '@'");
                 pasta_free(map);
                 if (result) *result = p.result;

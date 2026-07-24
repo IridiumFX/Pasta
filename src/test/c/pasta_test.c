@@ -526,6 +526,225 @@ static void test_label_chars(void) {
 }
 
 /* ================================================================== */
+/*  8b. ATOM LABELS (grammar alignment)                                */
+/*                                                                     */
+/*  The grammar defines map keys, section names and value-position     */
+/*  label-refs as `label` (unquoted-label | quoted-label), where       */
+/*  unquoted-label is a maximal run of labelchars.  labelchars include */
+/*  digits, so a label may be spelled like a number (0, 123, 0x1f) or  */
+/*  a keyword (true, null).  Value position keeps keyword/number       */
+/*  precedence; key and section-name position treat them as labels.    */
+/* ================================================================== */
+
+static void test_atom_labels(void) {
+    SUITE("Atom labels (grammar alignment)");
+    PastaValue *v;
+
+    /* Digit-led runs that are not valid numbers are labels (maximal munch),
+       both in value position (label-refs) ... */
+    v = parse_and_print("digit-led label values",
+        "[123abc, 12ab, 1_000, 0x1fg, 12.3.4]");
+    ASSERT(v != NULL && pasta_count(v) == 5, "count 5");
+    ASSERT(pasta_type(pasta_array_get(v, 0)) == PASTA_LABEL, "123abc is label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 0)), "123abc") == 0, "=123abc");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 2)), "1_000") == 0, "=1_000");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 3)), "0x1fg") == 0, "=0x1fg");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 4)), "12.3.4") == 0, "=12.3.4");
+    pasta_free(v);
+
+    /* ... and as map keys. */
+    v = parse_and_print("digit-led label key", "{123abc: 7}");
+    ASSERT(v != NULL && pasta_get_number(pasta_map_get(v, "123abc")) == 7.0, "123abc=7");
+    pasta_free(v);
+
+    /* Number- and keyword-spelled keys (the true:false / 0:1 cases). */
+    v = parse_and_print("number/keyword keys",
+        "{0: 1, 123: 2, true: 3, false: 4, null: 5, 3.14: 6, 0x1f: 7}");
+    ASSERT(v != NULL && pasta_count(v) == 7, "count 7");
+    ASSERT(pasta_get_number(pasta_map_get(v, "0")) == 1.0, "key 0");
+    ASSERT(pasta_get_number(pasta_map_get(v, "123")) == 2.0, "key 123");
+    ASSERT(pasta_get_number(pasta_map_get(v, "true")) == 3.0, "key true");
+    ASSERT(pasta_get_number(pasta_map_get(v, "false")) == 4.0, "key false");
+    ASSERT(pasta_get_number(pasta_map_get(v, "null")) == 5.0, "key null");
+    ASSERT(pasta_get_number(pasta_map_get(v, "3.14")) == 6.0, "key 3.14");
+    ASSERT(pasta_get_number(pasta_map_get(v, "0x1f")) == 7.0, "key 0x1f");
+    pasta_free(v);
+
+    /* A key that is literally `true` mapping to the boolean `false`. */
+    v = parse_and_print("true: false", "{true: false}");
+    ASSERT(v != NULL, "parsed");
+    ASSERT(pasta_type(pasta_map_get(v, "true")) == PASTA_BOOL, "value is bool");
+    ASSERT(pasta_get_bool(pasta_map_get(v, "true")) == 0, "value is false");
+    pasta_free(v);
+
+    /* '-' is not a labelchar: signed spellings are NOT valid keys. */
+    parse_expect_fail("negative key rejected",  "{-5: 1}",   PASTA_OK);
+    parse_expect_fail("-Inf key rejected",      "{-Inf: 1}", PASTA_OK);
+
+    /* Value-position precedence is preserved: a token spelled like a
+       keyword or number is still a bool/number there, not a label-ref. */
+    v = parse_and_print("value precedence", "[true, 0, 42, foo]");
+    ASSERT(v != NULL && pasta_count(v) == 4, "count 4");
+    ASSERT(pasta_type(pasta_array_get(v, 0)) == PASTA_BOOL,   "true -> bool");
+    ASSERT(pasta_type(pasta_array_get(v, 1)) == PASTA_NUMBER, "0 -> number");
+    ASSERT(pasta_type(pasta_array_get(v, 3)) == PASTA_LABEL,  "foo -> label");
+    pasta_free(v);
+
+    /* Section names are `label` too, so @0 / @true are valid. */
+    v = parse_and_print("numeric section name", "@0 { host: 1 } @true { on: 1 }");
+    ASSERT(v != NULL && pasta_count(v) == 2, "2 sections");
+    ASSERT(pasta_type(pasta_map_get(v, "0")) == PASTA_MAP, "@0 is map");
+    ASSERT(pasta_type(pasta_map_get(v, "true")) == PASTA_MAP, "@true is map");
+    pasta_free(v);
+
+    /* Roundtrip: parse -> write -> parse is now a fixed point for keys
+       spelled as numbers (previously the writer emitted {0: 1} which its
+       own parser rejected). */
+    {
+        PastaResult r;
+        PastaValue *a = pasta_parse_cstr("{\"0\": 1, 123abc: 2, 3.14: 3}", &r);
+        ASSERT(a != NULL, "parse1");
+        char *s = pasta_write(a, PASTA_COMPACT);
+        ASSERT(s != NULL, "write");
+        PastaValue *b = pasta_parse_cstr(s, &r);
+        printf("  [roundtrip] -> %s\n", s ? s : "(null)");
+        ASSERT(b != NULL && r.code == PASTA_OK, "reparse ok");
+        ASSERT(values_equal(a, b), "roundtrip equal");
+        free(s); pasta_free(a); pasta_free(b);
+    }
+
+    /* Roundtrip through @section output for a numeric section name. */
+    {
+        PastaResult r;
+        PastaValue *a = pasta_parse_cstr("@0 { host: 1 }", &r);
+        char *s = pasta_write(a, PASTA_COMPACT | PASTA_SECTIONS);
+        PastaValue *b = pasta_parse_cstr(s, &r);
+        printf("  [section roundtrip] -> %s\n", s ? s : "(null)");
+        ASSERT(b != NULL && r.code == PASTA_OK, "section reparse ok");
+        ASSERT(values_equal(a, b), "section roundtrip equal");
+        free(s); pasta_free(a); pasta_free(b);
+    }
+
+    SUITE_OK();
+}
+
+/* Boundary cases where a lexeme could be read as either a number/keyword or
+   a label — the exact edges maximal munch and value-position precedence must
+   get right.  Mirrors specs/conformance/atom-labels.cases. */
+static void test_atom_labels_edges(void) {
+    SUITE("Atom labels — number/keyword boundaries");
+    PastaValue *v;
+
+    /* number-vs-label boundary: a run is a number only if it is a *valid*
+       number all the way to the first non-labelchar. */
+    v = parse_and_print("num/label boundary",
+        "[0b1010, 0b12, 0xdeadbeef, 0xdeadbeefg, 5e3, 3d, 9__, 1.2.3, 0X1F, .5]");
+    ASSERT(v != NULL && pasta_count(v) == 10, "count 10");
+    ASSERT(pasta_type(pasta_array_get(v, 0)) == PASTA_NUMBER, "0b1010 -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 1)) == PASTA_LABEL,  "0b12 -> label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 1)), "0b12") == 0, "=0b12");
+    ASSERT(pasta_type(pasta_array_get(v, 2)) == PASTA_NUMBER, "0xdeadbeef -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 3)) == PASTA_LABEL,  "0xdeadbeefg -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 4)) == PASTA_LABEL,  "5e3 -> label (no exponent)");
+    ASSERT(pasta_type(pasta_array_get(v, 5)) == PASTA_LABEL,  "3d -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 6)) == PASTA_LABEL,  "9__ -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 7)) == PASTA_LABEL,  "1.2.3 -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 8)) == PASTA_NUMBER, "0X1F -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 9)) == PASTA_LABEL,  ".5 -> label");
+    pasta_free(v);
+
+    /* keyword boundary: only the exact spellings are keywords/floats. */
+    v = parse_and_print("keyword boundary",
+        "[true, truer, Inf, Infi, NaN, NaNa, null, nullable, true.]");
+    ASSERT(v != NULL && pasta_count(v) == 9, "count 9");
+    ASSERT(pasta_type(pasta_array_get(v, 0)) == PASTA_BOOL,   "true -> bool");
+    ASSERT(pasta_type(pasta_array_get(v, 1)) == PASTA_LABEL,  "truer -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 2)) == PASTA_NUMBER, "Inf -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 3)) == PASTA_LABEL,  "Infi -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 4)) == PASTA_NUMBER, "NaN -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 5)) == PASTA_LABEL,  "NaNa -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 6)) == PASTA_NULL,   "null");
+    ASSERT(pasta_type(pasta_array_get(v, 7)) == PASTA_LABEL,  "nullable -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 8)) == PASTA_LABEL,  "true. -> label");
+    pasta_free(v);
+
+    /* the same boundary lexemes are valid label keys */
+    v = parse_and_print("boundary keys",
+        "{0b12: 1, 0xdeadbeefg: 2, Inf: 3, truer: 4}");
+    ASSERT(v != NULL && pasta_count(v) == 4, "count 4");
+    ASSERT(pasta_get_number(pasta_map_get(v, "0b12")) == 1.0, "key 0b12");
+    ASSERT(pasta_get_number(pasta_map_get(v, "0xdeadbeefg")) == 2.0, "key 0xdeadbeefg");
+    ASSERT(pasta_get_number(pasta_map_get(v, "Inf")) == 3.0, "key Inf");
+    ASSERT(pasta_get_number(pasta_map_get(v, "truer")) == 4.0, "key truer");
+    pasta_free(v);
+
+    /* map value that is a digit-led label */
+    v = parse_and_print("digit-led label value", "{x: 12ab}");
+    ASSERT(v != NULL && pasta_type(pasta_map_get(v, "x")) == PASTA_LABEL, "12ab -> label");
+    ASSERT(strcmp(pasta_get_label(pasta_map_get(v, "x")), "12ab") == 0, "=12ab");
+    pasta_free(v);
+
+    /* signed spellings are neither bare keys nor bare section names */
+    parse_expect_fail("neg hex key", "{-0x1f: 1}",   PASTA_OK);
+    parse_expect_fail("neg section", "@-5 { a: 1 }", PASTA_OK);
+
+    SUITE_OK();
+}
+
+/* The number production is strict (matches the grammar): no leading zeros,
+   0x/0b need a digit, a fraction needs a digit.  A digit-led run that fails
+   these is a label; a '-'-led run that fails them is an error. */
+static void test_number_strictness(void) {
+    SUITE("Number strictness (grammar conformance)");
+    PastaValue *v;
+
+    v = parse_and_print("degenerate numerics -> labels",
+        "[0, 00, 007, 08, 10, -0, 0.5, 1., 0x, 0b, 0x1f, 0b10]");
+    ASSERT(v != NULL && pasta_count(v) == 12, "count 12");
+    ASSERT(pasta_type(pasta_array_get(v, 0))  == PASTA_NUMBER, "0 -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 1))  == PASTA_LABEL,  "00 -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 2))  == PASTA_LABEL,  "007 -> label");
+    ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 2)), "007") == 0, "=007");
+    ASSERT(pasta_type(pasta_array_get(v, 3))  == PASTA_LABEL,  "08 -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 4))  == PASTA_NUMBER, "10 -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 5))  == PASTA_NUMBER, "-0 -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 6))  == PASTA_NUMBER, "0.5 -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 7))  == PASTA_LABEL,  "1. -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 8))  == PASTA_LABEL,  "0x -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 9))  == PASTA_LABEL,  "0b -> label");
+    ASSERT(pasta_type(pasta_array_get(v, 10)) == PASTA_NUMBER, "0x1f -> num");
+    ASSERT(pasta_type(pasta_array_get(v, 11)) == PASTA_NUMBER, "0b10 -> num");
+    pasta_free(v);
+
+    /* '-'-led runs that are not valid numbers are errors ('-' can never
+       begin a label). */
+    parse_expect_fail("bare minus",       "[-]",    PASTA_OK);
+    parse_expect_fail("minus non-number", "[-x]",   PASTA_OK);
+    parse_expect_fail("minus leading 0",  "[-007]", PASTA_OK);
+    parse_expect_fail("minus 0x empty",   "[-0x]",  PASTA_OK);
+
+    /* Well-formed negatives still parse. */
+    v = parse_and_print("valid negatives", "[-7, -0, -0.5, -0x10, -Inf]");
+    ASSERT(v != NULL && pasta_count(v) == 5, "count 5");
+    for (size_t i = 0; i < 5; i++)
+        ASSERT(pasta_type(pasta_array_get(v, i)) == PASTA_NUMBER, "negative is num");
+    pasta_free(v);
+
+    /* Degenerate numerics are labels in key and section position too. */
+    v = parse_and_print("strict keys", "{007: 1, 0x: 2}");
+    ASSERT(v != NULL && pasta_count(v) == 2, "count 2");
+    ASSERT(pasta_get_number(pasta_map_get(v, "007")) == 1.0, "key 007");
+    ASSERT(pasta_get_number(pasta_map_get(v, "0x")) == 2.0, "key 0x");
+    pasta_free(v);
+
+    v = parse_and_print("numeric-ish section", "@007 { a: 1 }");
+    ASSERT(v != NULL && pasta_type(pasta_map_get(v, "007")) == PASTA_MAP, "@007 -> map");
+    pasta_free(v);
+
+    SUITE_OK();
+}
+
+/* ================================================================== */
 /*  9. COMMENTS                                                        */
 /* ================================================================== */
 
@@ -3094,6 +3313,9 @@ int main(void) {
     test_arrays();
     test_maps();
     test_label_chars();
+    test_atom_labels();
+    test_atom_labels_edges();
+    test_number_strictness();
     test_comments();
     test_whitespace();
     test_deep_nesting();
