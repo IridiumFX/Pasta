@@ -769,6 +769,62 @@ static void test_comments(void) {
     SUITE_OK();
 }
 
+/* C-style comments are `blank`, exactly as in Basta — the two grammars stay
+   identical apart from Basta's blob value.  See the comment production in
+   specs/Pasta.txt. */
+static void test_c_style_comments(void) {
+    SUITE("C-style comments (// and block)");
+    PastaValue *v;
+
+    v = parse_and_print("// preamble", "// header\n// another\n{key: 1}");
+    ASSERT(v != NULL && pasta_get_number(pasta_map_get(v, "key")) == 1.0, "key=1");
+    pasta_free(v);
+
+    v = parse_and_print("// trailing", "{a: 1} // tail");
+    ASSERT(v != NULL && pasta_get_number(pasta_map_get(v, "a")) == 1.0, "a=1");
+    pasta_free(v);
+
+    v = parse_and_print("// inside map", "{a: 1, // note\n b: 2}");
+    ASSERT(v != NULL && pasta_count(v) == 2, "count 2");
+    pasta_free(v);
+
+    v = parse_and_print("block comment", "/* header */ {a: 1}");
+    ASSERT(v != NULL && pasta_get_number(pasta_map_get(v, "a")) == 1.0, "a=1");
+    pasta_free(v);
+
+    v = parse_and_print("block inline", "{a: 1, /* mid */ b: 2}");
+    ASSERT(v != NULL && pasta_count(v) == 2, "count 2");
+    pasta_free(v);
+
+    v = parse_and_print("block multiline", "{a: 1, /* one\ntwo\nthree */ b: 2}");
+    ASSERT(v != NULL && pasta_count(v) == 2, "count 2");
+    pasta_free(v);
+
+    v = parse_and_print("mixed comment styles",
+        "; semi\n// slash\n/* block */\n{a: 1}");
+    ASSERT(v != NULL && pasta_get_number(pasta_map_get(v, "a")) == 1.0, "a=1");
+    pasta_free(v);
+
+    /* Delimiters inside strings are data, not comments. */
+    v = parse_and_print("URL in string", "{a: \"http://x/y\", b: \"/* not */\"}");
+    ASSERT(v != NULL, "parsed");
+    ASSERT(strcmp(pasta_get_string(pasta_map_get(v, "a")), "http://x/y") == 0, "url intact");
+    ASSERT(strcmp(pasta_get_string(pasta_map_get(v, "b")), "/* not */") == 0, "block text intact");
+    pasta_free(v);
+
+    v = parse_and_print("// in multiline string", "{a: \"\"\"// not a comment\"\"\"}");
+    ASSERT(v != NULL, "parsed");
+    ASSERT(strcmp(pasta_get_string(pasta_map_get(v, "a")), "// not a comment") == 0, "mstring intact");
+    pasta_free(v);
+
+    /* An unterminated block comment runs to EOF and is a parse error. */
+    parse_expect_fail("unterminated block", "{a: 1 /* never closed", PASTA_OK);
+    /* A lone '/' is not a token start. */
+    parse_expect_fail("bare slash", "{a: /}", PASTA_OK);
+
+    SUITE_OK();
+}
+
 /* ================================================================== */
 /*  10. WHITESPACE                                                     */
 /* ================================================================== */
@@ -3317,6 +3373,7 @@ int main(void) {
     test_atom_labels_edges();
     test_number_strictness();
     test_comments();
+    test_c_style_comments();
     test_whitespace();
     test_deep_nesting();
     test_error_cases();

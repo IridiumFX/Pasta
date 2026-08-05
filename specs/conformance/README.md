@@ -14,8 +14,11 @@ any implementation can self-check against the same cases.
 
 | File | What it is |
 |---|---|
-| `atom-labels.cases` | The corpus: `input → expected structural fingerprint`. The source of truth. |
-| `run_conformance.c` | Reference runner (public Pasta API only). Proves the reference implementation matches the corpus, and serves as a worked example for other runners. |
+| `atom-labels.cases` | Label / atom grammar: `input → expected structural fingerprint`. 79 cases. |
+| `comments.cases` | Comment grammar (`;`, `//`, `/* */`). 16 cases. |
+| `run_conformance.c` | Reference runner (public Pasta API only). Proves the reference implementation matches the corpora, and serves as a worked example for other runners. |
+
+The `.cases` files are the source of truth; the runner takes one as its argument.
 
 ## Corpus format
 
@@ -23,9 +26,12 @@ Plain text. Lines starting with `;` are comments; blank lines are ignored.
 Each case is two consecutive content lines:
 
 ```
-> <input>          the input document (verbatim after the "> " prefix)
+> <input>          the input document (after the "> " prefix)
 = <fingerprint>    the expected structural fingerprint, or ERR
 ```
+
+Within `<input>`, `\n` means a newline and `\\` a literal backslash — a case can
+therefore span lines, which line comments need. No other escape is recognised.
 
 The **fingerprint** is a serializer-independent encoding of the parse tree, so
 it does not depend on any implementation's whitespace or number formatting:
@@ -51,24 +57,35 @@ on — is a token a `num`, a `lbl:…`, a keyword, or the key text of a map.
 - Keys and section names are `label`: `{0: 1}`, `{true: false}`, `@0 { … }`.
 - `-` is not a labelchar: `{-5: 1}` and `@-5 { … }` are errors (quote to use).
 - Regressions that must stay invalid (`{key value}`, `{a: }`, `[1,,2]`).
+- All three comment forms (`;`, `//`, `/* */`) as `blank`; that delimiters inside
+  strings are data, not comments (`"http://x/y"`); and that an unterminated block
+  comment or a lone `/` is an error.
 
 Blob values are Basta-only and binary, so they are not in this text corpus; the
-Basta library suite covers them.
+Basta library suite covers them. Apart from blobs, Pasta and Basta accept exactly
+the same language — the case lines here are identical to those in Basta's copy of
+these corpora (only the headers differ, each citing its own spec), and keeping
+them so is the check that the superset claim still holds.
 
 ## Running the reference runner
 
 From this directory, built straight from the library sources:
 
 ```bash
-gcc -std=c11 -DPASTA_STATIC -I../../src/main/h -I../../src/main/c \
-    run_conformance.c ../../src/main/c/pasta_*.c -o run_conformance
-./run_conformance atom-labels.cases
+gcc -std=c11 -DPASTA_STATIC -I../../src/main/h -I../../src/main/c run_conformance.c ../../src/main/c/pasta_*.c -o run_conformance
 ```
 
-Expected tail:
+Then run each corpus:
+
+```bash
+./run_conformance atom-labels.cases && ./run_conformance comments.cases
+```
+
+Expected tails:
 
 ```
-conformance: 62/62 passed
+conformance: 79/79 passed
+conformance: 16/16 passed
 ```
 
 Exit status is `0` iff every case matches.
