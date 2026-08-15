@@ -645,7 +645,7 @@ static void test_atom_labels_edges(void) {
     ASSERT(strcmp(pasta_get_label(pasta_array_get(v, 1)), "0b12") == 0, "=0b12");
     ASSERT(pasta_type(pasta_array_get(v, 2)) == PASTA_NUMBER, "0xdeadbeef -> num");
     ASSERT(pasta_type(pasta_array_get(v, 3)) == PASTA_LABEL,  "0xdeadbeefg -> label");
-    ASSERT(pasta_type(pasta_array_get(v, 4)) == PASTA_LABEL,  "5e3 -> label (no exponent)");
+    ASSERT(pasta_type(pasta_array_get(v, 4)) == PASTA_NUMBER, "5e3 -> num (exponent)");
     ASSERT(pasta_type(pasta_array_get(v, 5)) == PASTA_LABEL,  "3d -> label");
     ASSERT(pasta_type(pasta_array_get(v, 6)) == PASTA_LABEL,  "9__ -> label");
     ASSERT(pasta_type(pasta_array_get(v, 7)) == PASTA_LABEL,  "1.2.3 -> label");
@@ -1148,15 +1148,20 @@ static void test_write_shortest_decimal(void) {
         free(out); pasta_free(v);
     }
 
-    /* Values that genuinely need the full width still get it, exactly, and
-       magnitudes that would push %g into exponential notation are written in
-       fixed notation instead -- the grammar's `number` has no exponent
-       production, so an exponent form would not read back as a number. */
+    /* Every finite double round-trips exactly, whatever its magnitude: values
+       needing the full 17 digits, and magnitudes where %g emits an exponent
+       (which `number` now admits).  This is the property the whole writer
+       exists to guarantee, so it is checked across the range rather than on a
+       handful of literals. */
     {
         double wide[] = {
-            1.0/3.0, 0.1 + 0.2,      /* need 16-17 significant digits */
-            1e16, 1e20, 6.02e23,     /* %g would emit 1e+16 etc.      */
-            1.5e-5, 0.00001,         /* %g would emit 1.5e-05         */
+            1.0/3.0, 0.1 + 0.2,           /* need 16-17 significant digits */
+            1e16, 1e20, 6.02214076e23,    /* %g emits an exponent           */
+            1.5e-5, 0.00001,
+            2.2250738585072014e-308,      /* DBL_MIN                        */
+            5e-324,                       /* smallest subnormal             */
+            1.7976931348623157e308,       /* DBL_MAX                        */
+            -6.02214076e23, -5e-324,
         };
         for (size_t i = 0; i < sizeof wide / sizeof *wide; i++) {
             PastaValue *m = pasta_new_map();
@@ -1166,25 +1171,56 @@ static void test_write_shortest_decimal(void) {
             PastaValue *back = s ? pasta_parse_cstr(s, &r) : NULL;
             const PastaValue *x = back ? pasta_map_get(back, "x") : NULL;
             printf("  [wide] %s\n", s ? s : "(null)");
-            ASSERT(s && !strpbrk(s, "eE"), "no exponent in output");
             ASSERT(x && pasta_type(x) == PASTA_NUMBER, "reads back as a number");
             ASSERT(x && pasta_get_number(x) == wide[i], "value preserved exactly");
             free(s); pasta_free(m); pasta_free(back);
         }
     }
 
-    /* Known gap: beyond roughly 1e62 (and below ~1e-60) fixed notation would
-       run to hundreds of digits, so the exponent form still escapes and such
-       values do not round-trip.  Representing them needs an exponent
-       production in the grammar -- a format decision, not a writer bug.
-       Pinned here so the boundary is visible rather than surprising. */
+    /* Exponent literals parse, in both cases and both signs. */
     {
-        PastaValue *m = pasta_new_map();
-        pasta_set(m, "x", pasta_new_number(5e-324));
-        char *s = pasta_write(m, PASTA_COMPACT);
-        printf("  [known gap] %s\n", s ? s : "(null)");
-        ASSERT(s && strpbrk(s, "eE") != NULL, "extreme magnitude still exponential");
-        free(s); pasta_free(m);
+        struct { const char *doc; double want; } ex[] = {
+            { "{x: 5e3}",     5000.0 },
+            { "{x: 1E5}",   100000.0 },
+            { "{x: 1e+16}",    1e16  },
+            { "{x: 1.5e-5}",   1.5e-5},
+            { "{x: -2.5e2}",  -250.0 },
+            { "{x: 0e5}",        0.0 },
+        };
+        for (size_t i = 0; i < sizeof ex / sizeof *ex; i++) {
+            PastaResult r;
+            PastaValue *v = pasta_parse_cstr(ex[i].doc, &r);
+            const PastaValue *x = v ? pasta_map_get(v, "x") : NULL;
+            ASSERT(x && pasta_type(x) == PASTA_NUMBER, ex[i].doc);
+            ASSERT(x && pasta_get_number(x) == ex[i].want, "exponent value");
+            pasta_free(v);
+        }
+    }
+
+    /* A malformed exponent is not a number.  `1e` and `1ex` are still valid
+       unquoted-labels and lex as labels; `1e+` is an error because '+' is
+       neither a labelchar nor a token start. */
+    {
+        PastaResult r;
+        PastaValue *v = pasta_parse_cstr("[1e, 1ex, 007e5]", &r);
+        ASSERT(v && pasta_count(v) == 3, "malformed exponents parse as labels");
+        ASSERT(v && pasta_type(pasta_array_get(v, 0)) == PASTA_LABEL, "1e -> label");
+        ASSERT(v && pasta_type(pasta_array_get(v, 1)) == PASTA_LABEL, "1ex -> label");
+        ASSERT(v && pasta_type(pasta_array_get(v, 2)) == PASTA_LABEL, "007e5 -> label");
+        pasta_free(v);
+        parse_expect_fail("1e+ is an error", "[1e+]", PASTA_OK);
+    }
+
+    /* A hex literal never takes an exponent: 'e' is one of its digits, so the
+       sign must not be swallowed.  0x1e-5 is 0x1e followed by -5. */
+    {
+        PastaResult r;
+        PastaValue *v = pasta_parse_cstr("[0x1e, 0x1E, 0b1010]", &r);
+        ASSERT(v && pasta_count(v) == 3, "hex/bin unaffected");
+        ASSERT(v && pasta_get_number(pasta_array_get(v, 0)) == 30.0, "0x1e = 30");
+        ASSERT(v && pasta_get_number(pasta_array_get(v, 1)) == 30.0, "0x1E = 30");
+        ASSERT(v && pasta_get_number(pasta_array_get(v, 2)) == 10.0, "0b1010 = 10");
+        pasta_free(v);
     }
 
     SUITE_OK();
