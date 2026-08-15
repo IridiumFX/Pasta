@@ -1114,6 +1114,82 @@ static void roundtrip(const char *label, const char *input) {
     pasta_free(v1);
 }
 
+/* The writer emits the shortest decimal that round-trips, not a fixed width.
+   A value someone typed comes back as they typed it, so loading and saving a
+   document is idempotent in appearance and does not produce a spurious diff.
+   Reported by a downstream consumer layering hand-written pastlets. */
+static void test_write_shortest_decimal(void) {
+    SUITE("Writer: shortest round-trip decimals");
+
+    struct { const char *in, *want; } cases[] = {
+        { "0.15",     "0.15"     },   /* was 0.14999999999999999 */
+        { "0.4",      "0.4"      },   /* was 0.40000000000000002 */
+        { "3.14159",  "3.14159"  },   /* was 3.1415899999999999  */
+        { "0.1",      "0.1"      },
+        { "2.5",      "2.5"      },
+        { "0.5",      "0.5"      },   /* binary-exact, unchanged  */
+        { "0.25",     "0.25"     },
+        { "-0.15",    "-0.15"    },
+        { "100",      "100"      },   /* integral: %lld path      */
+        { "1.0",      "1"        },
+        { "0x1f",     "0x1f"     },   /* format hints preserved   */
+        { "0b1010",   "0b1010"   },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        char doc[64];
+        snprintf(doc, sizeof doc, "{x: %s}", cases[i].in);
+        PastaResult r;
+        PastaValue *v = pasta_parse_cstr(doc, &r);
+        char *out = v ? pasta_write(v, PASTA_COMPACT) : NULL;
+        char want[64];
+        snprintf(want, sizeof want, "{x: %s}", cases[i].want);
+        printf("  [%-8s] -> %s\n", cases[i].in, out ? out : "(null)");
+        ASSERT(out && strcmp(out, want) == 0, cases[i].in);
+        free(out); pasta_free(v);
+    }
+
+    /* Values that genuinely need the full width still get it, exactly, and
+       magnitudes that would push %g into exponential notation are written in
+       fixed notation instead -- the grammar's `number` has no exponent
+       production, so an exponent form would not read back as a number. */
+    {
+        double wide[] = {
+            1.0/3.0, 0.1 + 0.2,      /* need 16-17 significant digits */
+            1e16, 1e20, 6.02e23,     /* %g would emit 1e+16 etc.      */
+            1.5e-5, 0.00001,         /* %g would emit 1.5e-05         */
+        };
+        for (size_t i = 0; i < sizeof wide / sizeof *wide; i++) {
+            PastaValue *m = pasta_new_map();
+            pasta_set(m, "x", pasta_new_number(wide[i]));
+            char *s = pasta_write(m, PASTA_COMPACT);
+            PastaResult r;
+            PastaValue *back = s ? pasta_parse_cstr(s, &r) : NULL;
+            const PastaValue *x = back ? pasta_map_get(back, "x") : NULL;
+            printf("  [wide] %s\n", s ? s : "(null)");
+            ASSERT(s && !strpbrk(s, "eE"), "no exponent in output");
+            ASSERT(x && pasta_type(x) == PASTA_NUMBER, "reads back as a number");
+            ASSERT(x && pasta_get_number(x) == wide[i], "value preserved exactly");
+            free(s); pasta_free(m); pasta_free(back);
+        }
+    }
+
+    /* Known gap: beyond roughly 1e62 (and below ~1e-60) fixed notation would
+       run to hundreds of digits, so the exponent form still escapes and such
+       values do not round-trip.  Representing them needs an exponent
+       production in the grammar -- a format decision, not a writer bug.
+       Pinned here so the boundary is visible rather than surprising. */
+    {
+        PastaValue *m = pasta_new_map();
+        pasta_set(m, "x", pasta_new_number(5e-324));
+        char *s = pasta_write(m, PASTA_COMPACT);
+        printf("  [known gap] %s\n", s ? s : "(null)");
+        ASSERT(s && strpbrk(s, "eE") != NULL, "extreme magnitude still exponential");
+        free(s); pasta_free(m);
+    }
+
+    SUITE_OK();
+}
+
 static void test_write_roundtrip(void) {
     SUITE("Writer: roundtrip");
 
@@ -3382,6 +3458,7 @@ int main(void) {
     test_write_compact();
     test_write_pretty();
     test_write_roundtrip();
+    test_write_shortest_decimal();
     test_write_strips_comments();
 
     /* File-based tests */
