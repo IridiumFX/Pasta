@@ -101,7 +101,15 @@ multiline-string    : "\"\"\"" , { anychar } , "\"\"\"" ;
    The one limit this leaves: a run of three or more quotes may appear only at
    the END of the content.  One in the middle terminates the string early, so
    content such as  a """ b  cannot be represented at all, and a writer must
-   refuse it rather than emit a document that will not read back. *)
+   refuse it rather than emit a document that will not read back.
+
+   Pasta has no blob, so content that is not text at all -- raw bytes from a
+   process, a NUL, a sequence that is not valid UTF-8 -- has no representation
+   here whatever the delimiter rule does.  A delimiter can be extended to cope
+   with quotes; it can do nothing about 0x00.  Basta's blob exists for exactly
+   that case, and a value that is captured bytes rather than authored text
+   belongs in one. *)
+
 
 boolean             : "true" | "false" ;
 number              : float-constant | hex-number | bin-number
