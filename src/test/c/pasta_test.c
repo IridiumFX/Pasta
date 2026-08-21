@@ -3463,6 +3463,97 @@ static void test_hex_bin_mixed(void) {
     SUITE_OK();
 }
 
+/* Round-trip property, in the shape `now` argued for: a writer and a lexer
+   that ship together can still disagree, and only a round trip catches it.
+   The invariant is not "everything writes" but "whatever is written reads
+   back" -- so refusing an unrepresentable value passes, and emitting one that
+   fails on read does not. */
+static void rt_check(const char *label, PastaValue *v) {
+    PastaValue *m = pasta_new_map();
+    pasta_set(m, "v", v);                 /* takes ownership of v */
+    char *s = pasta_write(m, PASTA_COMPACT);
+    if (!s) {
+        printf("  [%-24s] write refused (unrepresentable)\n", label);
+        ASSERT(1, "refused rather than emitting a corrupt document");
+        pasta_free(m);
+        return;
+    }
+    PastaResult r;
+    PastaValue *back = pasta_parse_cstr(s, &r);
+    int ok = back && r.code == PASTA_OK && values_equal(m, back);
+    printf("  [%-24s] %s\n", label, ok ? "round-trips" : "MISMATCH");
+    ASSERT(ok, label);
+    free(s); pasta_free(m); pasta_free(back);
+}
+
+static void test_writer_parser_agreement(void) {
+    SUITE("Writer/parser agreement (round-trip property)");
+
+    /* Strings — the shapes that prompted the report. */
+    rt_check("plain",            pasta_new_string("no quotes here"));
+    rt_check("quote inside",     pasta_new_string("a \" b"));
+    rt_check("quote then text",  pasta_new_string("said \"hi\" today"));
+    rt_check("leading quote",    pasta_new_string("\"leading"));
+    rt_check("newline",          pasta_new_string("line one\nline two"));
+    rt_check("quote + newline",  pasta_new_string("a \" and\na newline"));
+    rt_check("backslash",        pasta_new_string("C:\\path\\to\\file"));
+    rt_check("tab and cr",       pasta_new_string("col\tone\r\ncol\ttwo"));
+    rt_check("empty",            pasta_new_string(""));
+    /* Unrepresentable: must refuse, never corrupt. */
+    rt_check("ends with quote",  pasta_new_string("ends with a quote\""));
+    rt_check("lone quote",       pasta_new_string("\""));
+    rt_check("contains triple",  pasta_new_string("has \"\"\" inside"));
+
+    /* Numbers across the magnitude range, incl. exponent forms. */
+    rt_check("int",              pasta_new_number(42));
+    rt_check("neg",              pasta_new_number(-7));
+    rt_check("decimal",          pasta_new_number(0.15));
+    rt_check("third",            pasta_new_number(1.0/3.0));
+    rt_check("big exponent",     pasta_new_number(6.02214076e23));
+    rt_check("small exponent",   pasta_new_number(1.5e-5));
+    rt_check("DBL_MIN",          pasta_new_number(2.2250738585072014e-308));
+    rt_check("subnormal",        pasta_new_number(5e-324));
+    rt_check("Inf",              pasta_new_number(INFINITY));
+    rt_check("-Inf",             pasta_new_number(-INFINITY));
+
+    /* Other kinds. */
+    rt_check("bool",             pasta_new_bool(1));
+    rt_check("null",             pasta_new_null());
+    rt_check("label",            pasta_new_label("some.label"));
+    rt_check("nested",           pasta_new_array());
+
+    SUITE_OK();
+}
+
+/* Keys have no multiline form, so a key carrying a quote cannot be written at
+   all; the writer must refuse rather than emit {"a"b": 1}. */
+static void test_write_key_quotes(void) {
+    SUITE("Writer: keys containing quotes");
+    struct { const char *key; int writable; } k[] = {
+        { "plain",   1 },
+        { "a b",     1 },   /* quoted label, no quote inside */
+        { "a.b",     1 },
+        { "a\"b",    0 },
+        { "ab\"",    0 },
+    };
+    for (size_t i = 0; i < sizeof k / sizeof *k; i++) {
+        PastaValue *m = pasta_new_map();
+        pasta_set(m, k[i].key, pasta_new_number(1));
+        char *s = pasta_write(m, PASTA_COMPACT);
+        printf("  [%-8s] %s\n", k[i].key, s ? s : "(write refused)");
+        if (k[i].writable) {
+            PastaResult r;
+            PastaValue *back = s ? pasta_parse_cstr(s, &r) : NULL;
+            ASSERT(back && pasta_map_get(back, k[i].key), "writable key round-trips");
+            pasta_free(back);
+        } else {
+            ASSERT(s == NULL, "unrepresentable key refused");
+        }
+        free(s); pasta_free(m);
+    }
+    SUITE_OK();
+}
+
 /* ================================================================== */
 /*  MAIN                                                               */
 /* ================================================================== */
@@ -3495,6 +3586,8 @@ int main(void) {
     test_write_pretty();
     test_write_roundtrip();
     test_write_shortest_decimal();
+    test_writer_parser_agreement();
+    test_write_key_quotes();
     test_write_strips_comments();
 
     /* File-based tests */
