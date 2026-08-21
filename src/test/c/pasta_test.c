@@ -3499,10 +3499,11 @@ static void test_writer_parser_agreement(void) {
     rt_check("backslash",        pasta_new_string("C:\\path\\to\\file"));
     rt_check("tab and cr",       pasta_new_string("col\tone\r\ncol\ttwo"));
     rt_check("empty",            pasta_new_string(""));
-    /* Unrepresentable: must refuse, never corrupt. */
+    /* Trailing quote runs merge with the delimiter, so these round-trip. */
     rt_check("ends with quote",  pasta_new_string("ends with a quote\""));
     rt_check("lone quote",       pasta_new_string("\""));
-    rt_check("contains triple",  pasta_new_string("has \"\"\" inside"));
+    /* Unrepresentable: an interior run of 3+ must refuse, never corrupt. */
+    rt_check("interior triple",  pasta_new_string("has \"\"\" inside"));
 
     /* Numbers across the magnitude range, incl. exponent forms. */
     rt_check("int",              pasta_new_number(42));
@@ -3558,6 +3559,60 @@ static void test_write_key_quotes(void) {
 /*  MAIN                                                               */
 /* ================================================================== */
 
+/* The quote-run rule: a multiline string ends at the first run of three or
+   more quotes, and extras in that run belong to the content.  That is what
+   lets content ending in a quote be written at all -- the trailing quotes
+   merge with the closing delimiter -- while an interior run of three or more
+   still terminates the string early and must be refused. */
+static void test_multiline_quote_runs(void) {
+    SUITE("Multiline strings: quote-run rule");
+    PastaResult r;
+
+    /* Reading: extras in the closing run are content. */
+    struct { const char *doc, *want; } p[] = {
+        { "{d: \"\"\"a\"\"\"}",             "a"          },
+        { "{d: \"\"\"ends q\"\"\"\"}",      "ends q\""   },
+        { "{d: \"\"\"two\"\"\"\"\"}",       "two\"\""    },
+        { "{d: \"\"\"\"\"\"\"}",            "\""         },
+        { "{d: \"\"\"a \"\" b\"\"\"}",      "a \"\" b"   },
+    };
+    for (size_t i = 0; i < sizeof p / sizeof *p; i++) {
+        PastaValue *v = pasta_parse_cstr(p[i].doc, &r);
+        const PastaValue *x = v ? pasta_map_get(v, "d") : NULL;
+        printf("  %-24s -> [%s]\n", p[i].doc,
+               (x && pasta_type(x) == PASTA_STRING) ? pasta_get_string(x) : "(none)");
+        ASSERT(x && pasta_type(x) == PASTA_STRING, p[i].doc);
+        ASSERT(x && strcmp(pasta_get_string(x), p[i].want) == 0, "content matches");
+        pasta_free(v);
+    }
+
+    /* Writing: a trailing run is representable, an interior one is not. */
+    struct { const char *val; int writable; } w[] = {
+        { "ends with a quote\"",    1 },
+        { "\"",                     1 },
+        { "ends with three\"\"\"",  1 },
+        { "a \"\"\" b",             0 },
+        { "\"\"\" leading",         0 },
+    };
+    for (size_t i = 0; i < sizeof w / sizeof *w; i++) {
+        PastaValue *m = pasta_new_map();
+        pasta_set(m, "d", pasta_new_string(w[i].val));
+        char *s = pasta_write(m, PASTA_COMPACT);
+        if (w[i].writable) {
+            PastaValue *b = s ? pasta_parse_cstr(s, &r) : NULL;
+            const PastaValue *x = b ? pasta_map_get(b, "d") : NULL;
+            ASSERT(s && x && pasta_type(x) == PASTA_STRING
+                   && strcmp(pasta_get_string(x), w[i].val) == 0,
+                   "trailing quote run round-trips");
+            pasta_free(b);
+        } else {
+            ASSERT(s == NULL, "interior quote run refused");
+        }
+        free(s); pasta_free(m);
+    }
+    SUITE_OK();
+}
+
 int main(void) {
     printf("========================================\n");
     printf("  Pasta Parser & Writer Test Suite\n");
@@ -3588,6 +3643,7 @@ int main(void) {
     test_write_shortest_decimal();
     test_writer_parser_agreement();
     test_write_key_quotes();
+    test_multiline_quote_runs();
     test_write_strips_comments();
 
     /* File-based tests */
