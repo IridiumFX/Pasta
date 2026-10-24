@@ -16,6 +16,13 @@
   #define PASTA_API __attribute__((visibility("default")))
 #endif
 
+/* Capability: this header's value model has no blob type.
+   Consumers that may run on Pasta or Basta (alforno's backend shim among
+   them) should key off this rather than infer it from a build flag: a
+   pasta-shaped header backed by something blob-capable should say 1 here,
+   and must then provide PASTA_BLOB, pasta_new_blob and pasta_get_blob. */
+#define PASTA_HAS_BLOB 0
+
 #ifdef __cplusplus
 extern "C" {
 #endif
